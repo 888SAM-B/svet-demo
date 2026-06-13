@@ -42,6 +42,22 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { applications, isLoading, resetDemoData } = useApplication();
   const [resetting, setResetting] = useState(false);
+  const [whatsappNum, setWhatsappNum] = useState(
+    localStorage.getItem('svet_whatsapp_number') || '919876543210'
+  );
+  const [saveStatus, setSaveStatus] = useState('');
+
+  const handleSaveWhatsapp = () => {
+    const cleaned = whatsappNum.replace(/\D/g, '');
+    if (cleaned.length < 10) {
+      setSaveStatus('Error: Please enter a valid mobile number with country code (e.g. 919876543210).');
+      return;
+    }
+    localStorage.setItem('svet_whatsapp_number', cleaned);
+    setWhatsappNum(cleaned);
+    setSaveStatus('WhatsApp QR settings updated successfully!');
+    setTimeout(() => setSaveStatus(''), 4000);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('svet_admin_token');
@@ -237,6 +253,44 @@ export default function DashboardPage() {
           </Card>
 
         </div>
+
+        {/* WHATSAPP QR SETTINGS CARD */}
+        <Card className="bg-white border border-border-color p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-left">
+            <div>
+              <h4 className="font-display font-bold text-sm text-primary-blue uppercase tracking-wider mb-1">
+                WhatsApp QR Configurator
+              </h4>
+              <p className="text-[11px] text-secondary-text font-light">
+                Update the official WhatsApp mobile number displayed in the contact section and generated QR code. Include country code without "+" (e.g. 919876543210).
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-grow sm:flex-grow-0">
+                <input
+                  type="text"
+                  placeholder="e.g. 919876543210"
+                  value={whatsappNum}
+                  onChange={(e) => setWhatsappNum(e.target.value)}
+                  className="px-3 py-2 text-xs border border-border-color rounded-lg bg-primary-bg text-primary-text focus:outline-none focus:border-secondary-blue font-semibold w-full sm:w-48"
+                />
+              </div>
+              <Button
+                variant="primary"
+                onClick={handleSaveWhatsapp}
+                className="px-4 py-2 text-xs shrink-0 whitespace-nowrap bg-secondary-blue hover:bg-secondary-blue/95 border-none rounded-lg text-white"
+              >
+                Save Number
+              </Button>
+            </div>
+          </div>
+          {saveStatus && (
+            <p className={`text-[11px] font-semibold mt-2 ${saveStatus.startsWith('Error') ? 'text-red-600' : 'text-emerald-600'}`}>
+              {saveStatus}
+            </p>
+          )}
+        </Card>
 
         {/* RECHARTS SECTION */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">

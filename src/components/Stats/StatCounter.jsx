@@ -17,33 +17,33 @@ export const Counter = ({ end, duration = 1500, suffix = "" }) => {
       },
       { threshold: 0.1 }
     );
-    
+
     if (elementRef.current) {
       observer.observe(elementRef.current);
     }
-    
+
     return () => observer.disconnect();
   }, [hasStarted]);
 
   useEffect(() => {
     if (!hasStarted) return;
-    
+
     let startTime = null;
-    
+
     const animate = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const progress = timestamp - startTime;
       const progressPercentage = Math.min(progress / duration, 1);
-      
+
       setCount(Math.floor(progressPercentage * end));
-      
+
       if (progressPercentage < 1) {
         requestAnimationFrame(animate);
       } else {
         setCount(end);
       }
     };
-    
+
     requestAnimationFrame(animate);
   }, [end, duration, hasStarted]);
 
@@ -52,14 +52,7 @@ export const Counter = ({ end, duration = 1500, suffix = "" }) => {
 
 export default function StatCounter() {
   const stats = [
-    {
-      id: 1,
-      number: 500,
-      suffix: "+",
-      label: "Students Guided",
-      sub: "Successfully placed in global medical colleges",
-      icon: <Award className="w-6 h-6 text-secondary-blue" />,
-    },
+
     {
       id: 2,
       number: 10,
@@ -67,6 +60,14 @@ export default function StatCounter() {
       label: "Countries Offered",
       sub: "Top destinations across Europe and Asia",
       icon: <Globe2 className="w-6 h-6 text-secondary-blue" />,
+    },
+    {
+      id: 1,
+      number: 500,
+      suffix: "+",
+      label: "Students Guided",
+      sub: "Successfully placed in global medical colleges",
+      icon: <Award className="w-6 h-6 text-secondary-blue" />,
     },
     {
       id: 3,

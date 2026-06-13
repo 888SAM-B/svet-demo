@@ -1,14 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { 
-  Globe, 
-  GraduationCap, 
-  HeartHandshake, 
-  Stethoscope, 
-  Building, 
-  FileText, 
-  Plane, 
-  Compass 
+import {
+  Globe,
+  GraduationCap,
+  HeartHandshake,
+  Stethoscope,
+  Building,
+  FileText,
+  Plane,
+  Compass
 } from 'lucide-react';
 import aboutImage from '../../assets/about_medical_students.png';
 
@@ -39,8 +39,8 @@ export default function AboutSection() {
       label: "Global Destinations"
     },
     {
-      icon: <GraduationCap className="w-6 h-6 text-[#3F72AF]" />,
-      value: "100% Admission Guidance",
+      icon: <GraduationCap className="w-7 h-6 text-[#3F72AF]" />,
+      value: "100% Admission Support",
       label: "Success & Enrollment Rate"
     },
     {
@@ -81,10 +81,10 @@ export default function AboutSection() {
   return (
     <section id="about" className="py-24 bg-[#F9F7F7] border-b border-[#DBE2EF] overflow-hidden">
       <div className="max-w-7xl mx-auto px-6 space-y-20">
-        
+
         {/* ROW 1: Heading/Intro Text + Image (Two-Column Layout) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
-          
+
           {/* Left Text Column */}
           <div className="lg:col-span-7 space-y-6 text-left">
             <motion.div
@@ -143,7 +143,7 @@ export default function AboutSection() {
 
         {/* ROW 2: Statistics Cards (Full-Width 4-Column Grid) */}
         <div className="space-y-6">
-          <motion.div 
+          <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
@@ -185,7 +185,7 @@ export default function AboutSection() {
             </p>
           </div>
 
-          <motion.div 
+          <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"

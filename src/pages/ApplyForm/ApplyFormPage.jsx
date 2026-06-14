@@ -656,8 +656,8 @@ export default function ApplyFormPage() {
 
                                 <div className="shrink-0">
                                   {hasFile ? (
-                                    <div className="w-8 h-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center">
-                                      <Check className="w-4 h-4 text-white" />
+                                    <div className="w-8 h-8 rounded-full bg-emerald-600 border border-emerald-600 flex items-center justify-center shadow-sm">
+                                      <Check className="w-4 h-4 text-white" strokeWidth={3.5} />
                                     </div>
                                   ) : (
                                     <label className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer border transition-colors ${

@@ -41,8 +41,7 @@ const COLORS = [
 
 export default function DashboardPage() {
   const navigate = useNavigate();
-  const { applications, isLoading, resetDemoData } = useApplication();
-  const [resetting, setResetting] = useState(false);
+  const { applications, isLoading } = useApplication();
   const [whatsappNum, setWhatsappNum] = useState(
     localStorage.getItem('svet_whatsapp_number') || '919876543210'
   );
@@ -72,15 +71,7 @@ export default function DashboardPage() {
     navigate('/admin');
   };
 
-  const handleReset = async () => {
-    if (window.confirm("Are you sure you want to delete all students from database and reset CRM state?")) {
-      setResetting(true);
-      await resetDemoData();
-      setTimeout(() => {
-        setResetting(false);
-      }, 500);
-    }
-  };
+
 
   const [stats, setStats] = useState({
     total_registrations: 0,
@@ -161,16 +152,6 @@ export default function DashboardPage() {
 
         {/* Action buttons footer */}
         <div className="pt-6 border-t border-border-color flex flex-col gap-3 mt-6 md:mt-0">
-          <Button 
-            variant="glass" 
-            onClick={handleReset} 
-            disabled={resetting || isLoading}
-            className="w-full gap-2 py-2 text-xs border-border-color"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin' : ''}`} />
-            <span>Reset Demo Data</span>
-          </Button>
-
           <button 
             onClick={handleLogout}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 text-red-600 rounded-lg text-xs font-bold cursor-pointer transition-all duration-200"
@@ -188,7 +169,7 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="font-display font-extrabold text-2xl md:text-3xl text-primary-blue">
-              SaaS Overview Analytics
+              Admissions Overview & Analytics
             </h1>
             <p className="text-xs text-secondary-text font-light">
               Monitoring of medical school registrations and leading country preferences.

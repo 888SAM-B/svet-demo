@@ -21,16 +21,14 @@ import StudentDetailDrawer from './StudentDetailDrawer';
 
 export default function LeadsPage() {
   const navigate = useNavigate();
-  const { applications, isLoading, deleteApplication, updateApplication, resetDemoData, loadStudents } = useApplication();
+  const { applications, isLoading, deleteApplication, updateApplication, loadStudents } = useApplication();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [countryFilter, setCountryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [dateFilter, setDateFilter] = useState('all');
   
-  const [selectedStudent, setSelectedStudent] = useState(null);
   const [editingStatusId, setEditingStatusId] = useState(null);
-  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('svet_admin_token');
@@ -46,13 +44,8 @@ export default function LeadsPage() {
     navigate('/admin');
   };
 
-  const handleReset = async () => {
-    setResetting(true);
-    await resetDemoData();
-    setTimeout(() => {
-      setResetting(false);
-    }, 500);
-  };
+  // Reset preview state if student changes
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   const handleDelete = async (id, name) => {
     if (window.confirm(`Are you sure you want to delete lead for: ${name}?`)) {
@@ -188,16 +181,6 @@ export default function LeadsPage() {
 
         {/* Action buttons footer */}
         <div className="pt-6 border-t border-border-color flex flex-col gap-3 mt-6 md:mt-0">
-          <Button 
-            variant="glass" 
-            onClick={handleReset} 
-            disabled={resetting || isLoading}
-            className="w-full gap-2 py-2 text-xs border-border-color"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${resetting ? 'animate-spin' : ''}`} />
-            <span>Reset Demo Data</span>
-          </Button>
-
           <button 
             onClick={handleLogout}
             className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 text-red-600 rounded-lg text-xs font-bold cursor-pointer transition-all duration-200"

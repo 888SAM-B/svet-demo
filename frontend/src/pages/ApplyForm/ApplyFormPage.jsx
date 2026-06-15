@@ -15,12 +15,15 @@ import {
   Upload, 
   Check,
   Home,
-  LayoutDashboard
+  LayoutDashboard,
+  FileDown
 } from 'lucide-react';
 import { useApplication } from '../../context/ApplicationContext';
 import { Button } from '../../components/Common/Button';
 import { Card } from '../../components/Common/Card';
 import Navbar from '../../components/Navbar/Navbar';
+import html2pdf from 'html2pdf.js';
+
 
 const STEPS = [
   { label: 'Personal', icon: <User className="w-4 h-4" /> },
@@ -235,6 +238,353 @@ export default function ApplyFormPage() {
       alert(e.message || 'Failed to submit application. Please check form validation rules and try again.');
     }
   };
+
+  const handleDownloadReceipt = () => {
+    const student = {
+      id: submittedAppId,
+      personal: formData.personal,
+      parent: formData.parent,
+      academic: formData.academic,
+      neet: formData.neet,
+      documents: formData.documents,
+      createdDate: new Date().toISOString()
+    };
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>SVET Lead Application Detail - ${student.id}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+            
+            * {
+              box-sizing: border-box;
+              margin: 0;
+              padding: 0;
+            }
+            @page {
+              size: A4;
+              margin: 0;
+            }
+            body {
+              font-family: 'Plus Jakarta Sans', sans-serif;
+              color: #1a202c;
+              background-color: #ffffff;
+              line-height: 1.5;
+            }
+            .page {
+              width: 210mm;
+              height: 290mm;
+              box-sizing: border-box;
+              padding: 15mm 20mm;
+              margin: 0 auto;
+              position: relative;
+              background-color: #ffffff;
+            }
+            .header-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-bottom: 25px;
+              border-bottom: 2px solid #3b82f6;
+            }
+            .header-table td {
+              padding-bottom: 15px;
+              vertical-align: middle;
+            }
+            .logo-container {
+              width: 90px;
+            }
+            .logo-badge {
+              width: 75px;
+              height: 55px;
+              background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+              border-radius: 12px;
+              display: inline-block;
+              color: white;
+              text-align: center;
+              line-height: 55px;
+              font-size: 16px;
+              font-weight: 800;
+              letter-spacing: 1px;
+            }
+            .title-container {
+              padding-left: 15px;
+            }
+            .title-container h1 {
+              font-size: 18px;
+              font-weight: 800;
+              color: #1e3a8a;
+              letter-spacing: -0.5px;
+              line-height: 1.2;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+            }
+            .title-container p {
+              font-size: 10px;
+              font-weight: 600;
+              color: #64748b;
+              letter-spacing: 0.5px;
+              line-height: 1.2;
+              text-transform: uppercase;
+            }
+            .meta-container {
+              text-align: right;
+              vertical-align: middle;
+            }
+            .ref-badge {
+              display: inline-block;
+              background-color: #eff6ff;
+              border: 1px solid #bfdbfe;
+              color: #1e3a8a;
+              padding: 8px 14px;
+              border-radius: 8px;
+              font-family: monospace;
+              font-weight: 700;
+              font-size: 13px;
+              letter-spacing: 0.5px;
+            }
+            .section-title {
+              font-size: 11px;
+              font-weight: 800;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              color: #1e3a8a;
+              background-color: #f8fafc;
+              padding: 6px 12px;
+              border-left: 4px solid #3b82f6;
+              margin-top: 25px;
+              margin-bottom: 15px;
+            }
+            .grid-3 {
+              display: grid;
+              grid-template-cols: repeat(3, 1fr);
+              gap: 15px;
+            }
+            .grid-2 {
+              display: grid;
+              grid-template-cols: repeat(2, 1fr);
+              gap: 15px;
+            }
+            .field {
+              border-bottom: 1px solid #f1f5f9;
+              padding-bottom: 8px;
+            }
+            .field strong {
+              display: block;
+              font-size: 9px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              color: #64748b;
+              margin-bottom: 2px;
+              font-weight: 600;
+            }
+            .field span {
+              font-size: 12px;
+              font-weight: 600;
+              color: #0f172a;
+            }
+            .checklist-grid {
+              display: grid;
+              grid-template-cols: 1fr 1fr;
+              gap: 10px;
+            }
+            .checklist-item {
+              font-size: 11px;
+              font-weight: 500;
+              color: #334155;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .check-dot {
+              width: 6px;
+              height: 6px;
+              background-color: #10b981;
+              border-radius: 50%;
+              display: inline-block;
+            }
+            .sig-table {
+              width: 100%;
+              margin-top: 60px;
+              border-collapse: collapse;
+            }
+            .sig-col {
+              width: 50%;
+              text-align: center;
+              vertical-align: top;
+            }
+            .sig-line {
+              width: 180px;
+              border-bottom: 1px solid #cbd5e1;
+              margin: 0 auto 8px auto;
+            }
+            .sig-text {
+              font-size: 10px;
+              font-weight: 600;
+              color: #64748b;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .footer {
+              position: absolute;
+              bottom: 15mm;
+              left: 20mm;
+              right: 20mm;
+              text-align: center;
+              font-size: 9px;
+              color: #94a3b8;
+              border-top: 1px solid #e2e8f0;
+              padding-top: 15px;
+              font-weight: 500;
+            }
+            
+            @media print {
+              body {
+                background-color: transparent;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .page {
+                height: 290mm;
+                page-break-after: always;
+                padding: 15mm 20mm;
+                margin: 0;
+                border: none;
+                box-shadow: none;
+              }
+              .page:last-child {
+                page-break-after: avoid;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="page">
+            <table class="header-table">
+              <tr>
+                <td class="logo-container">
+                  <div class="logo-badge">SVET</div>
+                </td>
+                <td class="title-container">
+                  <h1>Sri Venkateshwara Educational Trust</h1>
+                  <p>MBBS & BDS Overseas Admissions Lead Portal</p>
+                </td>
+                <td class="meta-container">
+                  <div class="ref-badge">REF: ${student.id}</div>
+                </td>
+              </tr>
+            </table>
+
+            <div class="section-title" style="margin-top: 0;">1. Personal Information</div>
+            <div class="grid-3">
+              <div class="field"><strong>Candidate Name</strong><span>${student.personal.name}</span></div>
+              <div class="field"><strong>Gender</strong><span>${student.personal.gender}</span></div>
+              <div class="field"><strong>Date of Birth</strong><span>${student.personal.dob}</span></div>
+              <div class="field"><strong>Aadhaar Number</strong><span>${student.personal.aadhaar}</span></div>
+              <div class="field"><strong>Community Category</strong><span>${student.personal.community}</span></div>
+              <div class="field"><strong>Passport Number</strong><span>${student.personal.passportNo || 'N/A'}</span></div>
+            </div>
+
+            <div class="section-title">2. Parent & Communication Info</div>
+            <div class="grid-3">
+              <div class="field"><strong>Father / Guardian</strong><span>${student.parent.parentName}</span></div>
+              <div class="field"><strong>Mobile Number 1</strong><span>${student.parent.mobile1}</span></div>
+              <div class="field"><strong>Mobile Number 2</strong><span>${student.parent.mobile2 || 'N/A'}</span></div>
+              <div class="field"><strong>District</strong><span>${student.parent.district}</span></div>
+              <div class="field"><strong>Pincode</strong><span>${student.parent.pincode}</span></div>
+            </div>
+            <div style="margin-top: 15px;" class="field">
+              <strong>Communication Address</strong>
+              <span>${student.parent.address}</span>
+            </div>
+
+            <div class="section-title">3. +2 Academic Information</div>
+            <div class="grid-3">
+              <div class="field"><strong>HSC Group</strong><span>${student.academic.hscGroup}</span></div>
+              <div class="field"><strong>Register Number</strong><span>${student.academic.hscRegisterNo}</span></div>
+              <div class="field"><strong>HSC Total Score</strong><span>${student.academic.totalMarks}</span></div>
+              <div class="field"><strong>Physics Marks</strong><span>${student.academic.physicsMarks} / 100</span></div>
+              <div class="field"><strong>Chemistry Marks</strong><span>${student.academic.chemistryMarks} / 100</span></div>
+              <div class="field"><strong>Biology Marks</strong><span>${student.academic.biologyMarks} / 100</span></div>
+            </div>
+          </div>
+
+          <div class="page">
+            <div class="section-title" style="margin-top: 0;">4. NEET & Choice Preferences</div>
+            <div class="grid-3">
+              <div class="field"><strong>NEET Score</strong><span>${student.neet.score} / 720</span></div>
+              <div class="field"><strong>NEET App Number</strong><span>${student.neet.applicationNumber}</span></div>
+              <div class="field"><strong>Preferred Country</strong><span>${student.neet.interestedCountry}</span></div>
+            </div>
+
+            <div class="section-title">5. Verification Document Checklist</div>
+            <div class="checklist-grid">
+              <div class="checklist-item"><div class="check-dot"></div>+2 Marksheet Attached</div>
+              <div class="checklist-item"><div class="check-dot"></div>NEET Application Copy Attached</div>
+              <div class="checklist-item"><div class="check-dot"></div>NEET Score Card Attached</div>
+              <div class="checklist-item"><div class="check-dot"></div>Passport Size Photo Attached</div>
+              <div class="checklist-item"><div class="check-dot"></div>Transfer Certificate Attached</div>
+              ${student.personal.passportNo ? '<div class="checklist-item"><div class="check-dot"></div>Passport Front Page Attached</div>' : ''}
+            </div>
+
+            <table class="sig-table">
+              <tr>
+                <td class="sig-col">
+                  <div class="sig-line"></div>
+                  <div class="sig-text">Candidate's Signature</div>
+                </td>
+                <td class="sig-col">
+                  <div class="sig-line"></div>
+                  <div class="sig-text">Authorized SVET Officer</div>
+                </td>
+              </tr>
+            </table>
+
+            <div class="footer">
+              <p>Generated from Sri Venkateshwara Educational Trust CRM. Lead created at ${new Date(student.createdDate).toLocaleDateString()}</p>
+              <p>Sri Venkateshwara Educational Trust &copy; 2026. All Rights Reserved.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const container = document.createElement('div');
+    container.style.position = 'fixed';
+    container.style.top = '0';
+    container.style.left = '0';
+    container.style.width = '210mm';
+    container.style.height = '0';
+    container.style.overflow = 'hidden';
+    container.style.zIndex = '-9999';
+
+    const element = document.createElement('div');
+    element.innerHTML = printHtml;
+    container.appendChild(element);
+    document.body.appendChild(container);
+
+    const opt = {
+      margin:       0,
+      filename:     `SVET-Application-${student.id}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true, logging: false, scrollX: 0, scrollY: 0 },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      pagebreak:    { mode: ['css'] }
+    };
+
+    html2pdf().set(opt).from(element).save().then(() => {
+      document.body.removeChild(container);
+    }).catch(err => {
+      console.error("PDF download error:", err);
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+    });
+  };
+
+
 
   const inputClass = (hasError) => `w-full bg-white border rounded-lg px-4 py-3 text-sm text-primary-text focus:outline-none focus:border-secondary-blue focus:ring-1 focus:ring-secondary-blue/30 h-12 transition-colors ${
     hasError ? 'border-red-500' : 'border-border-color'
@@ -846,6 +1196,14 @@ export default function ApplyFormPage() {
               <hr className="border-border-color my-4" />
 
               <div className="flex flex-col gap-3">
+                <Button 
+                  variant="secondary" 
+                  className="w-full gap-2 py-3 justify-center text-emerald-600 border-emerald-200 hover:bg-emerald-50/50 cursor-pointer animate-pulse"
+                  onClick={handleDownloadReceipt}
+                >
+                  <FileDown className="w-4 h-4 text-emerald-600" />
+                  <span>Download Application PDF</span>
+                </Button>
                 <Link to="/">
                   <Button variant="secondary" className="w-full gap-2 py-3 justify-center">
                     <Home className="w-4 h-4 text-secondary-blue" />

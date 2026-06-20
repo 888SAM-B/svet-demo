@@ -1,10 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .core.config import settings
 from .core.database import engine, Base, SessionLocal
 from .core.security import get_password_hash
 from .models.admin import Admin
+from .models import country as _country_models  # noqa: F401 — ensures tables are created
+from .models import homepage_gallery as _homepage_gallery_models  # noqa: F401
 from .routes import auth_routes, student_routes, dashboard_routes, contact_routes
+from .routes.country_routes import public_router as country_public_router, admin_router as country_admin_router
+from .routes.homepage_gallery_routes import public_router as gallery_public_router, admin_router as gallery_admin_router
 
 # Create DB tables automatically on startup
 Base.metadata.create_all(bind=engine)
@@ -52,8 +57,16 @@ app.add_middleware(
 app.include_router(auth_routes.router, prefix=settings.API_V1_STR)
 app.include_router(student_routes.router, prefix=settings.API_V1_STR)
 app.include_router(student_routes.files_router, prefix=settings.API_V1_STR)
-app.include_router(dashboard_routes.export_router, prefix=settings.API_V1_STR)  # export_router matches dashboard_routes name
+app.include_router(dashboard_routes.export_router, prefix=settings.API_V1_STR)
 app.include_router(contact_routes.router, prefix=settings.API_V1_STR)
+# Country CMS — public routes have their own full prefix, admin routes use API_V1_STR
+app.include_router(country_public_router)
+app.include_router(country_admin_router, prefix=settings.API_V1_STR)
+app.include_router(gallery_public_router)
+app.include_router(gallery_admin_router, prefix=settings.API_V1_STR)
+
+# Serve uploaded files publicly (country images); student files remain JWT-protected
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
 # Health Check Endpoint
 @app.get(f"{settings.API_V1_STR}/health", tags=["Health"])

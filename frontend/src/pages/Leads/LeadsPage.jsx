@@ -1,15 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { 
-  Users, 
-  LayoutDashboard, 
   Search, 
   Download, 
   Eye, 
   Trash2, 
-  LogOut, 
   RefreshCw,
-  GraduationCap,
   Filter,
   FileEdit
 } from 'lucide-react';
@@ -18,6 +14,7 @@ import { useApplication } from '../../context/ApplicationContext';
 import { Card } from '../../components/Common/Card';
 import { Button } from '../../components/Common/Button';
 import StudentDetailDrawer from './StudentDetailDrawer';
+import AdminSidebar from '../../components/Admin/AdminSidebar';
 
 export default function LeadsPage() {
   const navigate = useNavigate();
@@ -38,11 +35,6 @@ export default function LeadsPage() {
       loadStudents();
     }
   }, [navigate]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('svet_admin_token');
-    navigate('/admin');
-  };
 
   // Reset preview state if student changes
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -145,51 +137,7 @@ export default function LeadsPage() {
 
   return (
     <div className="min-h-screen bg-primary-bg text-primary-text flex flex-col md:flex-row">
-      
-      {/* SIDEBAR PANEL */}
-      <aside className="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-border-color flex flex-col justify-between p-6 shrink-0">
-        <div className="space-y-8">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-secondary-blue/10 flex items-center justify-center border border-secondary-blue/20">
-              <GraduationCap className="w-5 h-5 text-secondary-blue" />
-            </div>
-            <div>
-              <span className="font-display font-extrabold text-lg text-primary-blue">SVET CRM</span>
-              <span className="text-[9px] text-secondary-text uppercase tracking-widest block font-light">Management Panel</span>
-            </div>
-          </div>
-
-          {/* Nav Links */}
-          <nav className="flex flex-col gap-1.5">
-            <Link 
-              to="/admin/dashboard" 
-              className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm text-secondary-text hover:text-primary-blue hover:bg-secondary-bg transition-all font-semibold"
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>Dashboard</span>
-            </Link>
-            <Link 
-              to="/admin/leads" 
-              className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm bg-secondary-blue/10 text-secondary-blue font-bold border border-secondary-blue/15"
-            >
-              <Users className="w-4 h-4" />
-              <span>Leads Management</span>
-            </Link>
-          </nav>
-        </div>
-
-        {/* Action buttons footer */}
-        <div className="pt-6 border-t border-border-color flex flex-col gap-3 mt-6 md:mt-0">
-          <button 
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 border border-red-200 hover:border-red-300 text-red-600 rounded-lg text-xs font-bold cursor-pointer transition-all duration-200"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Log Out</span>
-          </button>
-        </div>
-      </aside>
+      <AdminSidebar />
 
       {/* LEADS LIST MAIN */}
       <main className="flex-grow p-6 md:p-10 space-y-6 overflow-y-auto max-h-screen">

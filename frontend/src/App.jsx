@@ -6,6 +6,9 @@ import ApplyFormPage from './pages/ApplyForm/ApplyFormPage';
 import AdminLoginPage from './pages/AdminLogin/AdminLoginPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
 import LeadsPage from './pages/Leads/LeadsPage';
+import CountriesPage from './pages/Countries/CountriesPage';
+import PageBuilderPage from './pages/Countries/PageBuilderPage';
+import GalleryManagementPage from './pages/Gallery/GalleryManagementPage';
 import SplashScreen from './components/Common/SplashScreen';
 
 // Protected Route Wrapper for Admin Paths
@@ -52,6 +55,30 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <LeadsPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/countries" 
+            element={
+              <ProtectedRoute>
+                <CountriesPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/countries/:id/builder" 
+            element={
+              <ProtectedRoute>
+                <PageBuilderPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/admin/gallery" 
+            element={
+              <ProtectedRoute>
+                <GalleryManagementPage />
               </ProtectedRoute>
             } 
           />

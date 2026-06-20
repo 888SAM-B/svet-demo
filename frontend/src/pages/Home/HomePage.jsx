@@ -6,6 +6,7 @@ import { Button } from '../../components/Common/Button';
 import Navbar from '../../components/Navbar/Navbar';
 import AboutSection from '../../components/About/AboutSection';
 import StatCounter from '../../components/Stats/StatCounter';
+import HomepageGallery from '../../components/Gallery/HomepageGallery';
 import CountryGrid from '../../components/Countries/CountryCard';
 import FeaturesGrid from '../../components/WhyChoose/FeaturesGrid';
 import JourneyTimeline from '../../components/StudentJourney/JourneyTimeline';
@@ -112,6 +113,9 @@ export default function HomePage() {
 
       {/* STATS SECTION */}
       <StatCounter />
+
+      {/* IMAGE GALLERY SECTION */}
+      <HomepageGallery />
 
       {/* COUNTRIES SECTION */}
       <CountryGrid />

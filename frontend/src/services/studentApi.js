@@ -10,6 +10,13 @@ export const studentApi = {
     });
   },
 
+  checkStatus: async (identifier, dob) => {
+    return apiClient('/students/status', {
+      method: 'POST',
+      body: JSON.stringify({ identifier, dob })
+    });
+  },
+
   getStudents: async (filters = {}) => {
     const params = new URLSearchParams();
     if (filters.search) params.append('search', filters.search);

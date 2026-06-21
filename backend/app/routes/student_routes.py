@@ -10,42 +10,18 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from ..core.database import get_db
-from ..core.security import decode_access_token
-from ..models.admin import Admin
+from ..core.security import require_role
+from ..models.user import User
 from ..models.student import Student, StudentDocument
-from ..schemas.student_schema import StudentPayload, StudentStatusUpdate
+from ..schemas.student_schema import StudentPayload, StudentStatusUpdate, StudentStatusQuery
 from ..services.file_service import file_service
+from ..services.activity_service import log_activity
 
 router = APIRouter(prefix="/students", tags=["Students"])
 files_router = APIRouter(prefix="/files/students", tags=["Files"])
-security_scheme = HTTPBearer()
 
-# Auth Dependency
-def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-    db: Session = Depends(get_db)
-) -> Admin:
-    """Dependency to validate admin Bearer JWT token"""
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired or invalid token. Please log in again."
-        )
-    username = payload.get("sub")
-    if not username:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token payload is missing subject identifiers."
-        )
-    admin = db.query(Admin).filter(Admin.username == username).first()
-    if not admin:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorized admin profile not found."
-        )
-    return admin
+# Auth Dependency - mapped to RBAC user validation
+get_current_admin = require_role(["MASTER_ADMIN", "LEAD_MANAGER"])
 
 
 # Format Helper for Nested Frontend Response
@@ -214,6 +190,40 @@ async def apply(
     return format_student(new_student)
 
 
+@router.post("/status")
+def check_status(
+    payload: StudentStatusQuery,
+    db: Session = Depends(get_db)
+):
+    """Retrieve application status and details publicly using identifier (Aadhaar or App ID) and DOB"""
+    try:
+        # Normalize DOB string to Python date
+        dob_parsed = datetime.strptime(payload.dob, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Invalid Date of Birth format. Please use YYYY-MM-DD."
+        )
+
+    identifier_clean = payload.identifier.strip()
+
+    student = db.query(Student).filter(
+        or_(
+            Student.application_id == identifier_clean,
+            Student.aadhaar_number == identifier_clean
+        ),
+        Student.date_of_birth == dob_parsed
+    ).first()
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Application not found. Check your Reference ID/Aadhaar & DOB."
+        )
+
+    return format_student(student)
+
+
 @router.get("")
 def get_students(
     search: Optional[str] = None,
@@ -221,7 +231,7 @@ def get_students(
     status: Optional[str] = None,
     date_range: Optional[str] = "all",
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Retrieve all student leads with filtering capabilities"""
     query = db.query(Student)
@@ -260,7 +270,7 @@ def get_students(
 def get_student(
     student_id: str,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Get single student record detail"""
     student = db.query(Student).filter(Student.application_id == student_id).first()
@@ -274,18 +284,33 @@ def update_status(
     student_id: str,
     payload: StudentStatusUpdate,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Updates status or notes fields for student"""
     student = db.query(Student).filter(Student.application_id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
         
+    old_status = student.status
     student.status = payload.status
     if payload.notes:
         student.notes = payload.notes
         
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Lead Updates",
+        metadata={
+            "student_id": student.id,
+            "application_id": student_id,
+            "old_status": old_status,
+            "new_status": student.status,
+            "student_name": student.full_name
+        }
+    )
+    
     return {"success": True, "id": student_id, "status": student.status}
 
 
@@ -293,18 +318,33 @@ def update_status(
 def delete_student(
     student_id: str,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Deletes student record and removes local document uploads safely"""
     student = db.query(Student).filter(Student.application_id == student_id).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
         
+    student_id_db = student.id
+    student_name = student.full_name
     db.delete(student)
     db.commit()
     
     # Safe storage directory wipe
     file_service.delete_student_folder(student_id)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Lead Updates",
+        metadata={
+            "student_id": student_id_db,
+            "application_id": student_id,
+            "deleted": True,
+            "student_name": student_name
+        }
+    )
+    
     return {"success": True, "id": student_id}
 
 
@@ -313,7 +353,7 @@ def delete_student(
 def serve_file(
     application_id: str,
     filename: str,
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Protected file endpoint returning FileResponse for authorized admins"""
     file_path = file_service.get_student_file_path(application_id, filename)
@@ -323,7 +363,7 @@ def serve_file(
 @router.post("/reset")
 def reset_demo(
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Deletes all student records, deletes upload directories, and returns empty database state"""
     students = db.query(Student).all()
@@ -333,5 +373,13 @@ def reset_demo(
     db.query(StudentDocument).delete()
     db.query(Student).delete()
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Lead Updates",
+        metadata={"reset_demo": True}
+    )
+    
     return []
 

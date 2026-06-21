@@ -57,12 +57,6 @@ export default function DashboardPage() {
     setTimeout(() => setSaveStatus(''), 4000);
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem('svet_admin_token');
-    if (!token) {
-      navigate('/admin');
-    }
-  }, [navigate]);
 
   const [stats, setStats] = useState({
     total_registrations: 0,

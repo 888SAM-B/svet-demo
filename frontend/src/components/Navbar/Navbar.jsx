@@ -150,6 +150,11 @@ export default function Navbar() {
                 </button>
               ))}
             </div>
+            <Link to="/apply?track=true" className="mr-2">
+              <Button variant="secondary" className="px-4 py-2 text-xs border-secondary-blue/30 text-secondary-blue hover:bg-secondary-blue/5">
+                Track Status
+              </Button>
+            </Link>
             <Link to="/apply">
               <Button variant="primary" className="px-5 py-2 text-xs">
                 Apply Now
@@ -188,13 +193,15 @@ export default function Navbar() {
                   </button>
                 ))}
                 <hr className="border-border-color my-1" />
+                <Link to="/apply?track=true" onClick={() => setIsOpen(false)} className="w-full">
+                  <Button variant="secondary" className="w-full py-2.5 mb-2 border-secondary-blue/30 text-secondary-blue hover:bg-secondary-blue/5">
+                    Track Application Status
+                  </Button>
+                </Link>
                 <Link to="/apply" onClick={() => setIsOpen(false)} className="w-full">
                   <Button variant="primary" className="w-full py-2.5">
                     Apply Now
                   </Button>
-                </Link>
-                <Link to="/admin" onClick={() => setIsOpen(false)} className="text-center text-xs font-semibold text-secondary-text hover:text-primary-blue hover:underline mt-2">
-                  Admin Portal Login
                 </Link>
               </div>
             </motion.div>

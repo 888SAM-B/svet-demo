@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, 
@@ -16,13 +16,17 @@ import {
   Check,
   Home,
   LayoutDashboard,
-  FileDown
+  FileDown,
+  Eye,
+  Trash2,
+  X
 } from 'lucide-react';
 import { useApplication } from '../../context/ApplicationContext';
 import { Button } from '../../components/Common/Button';
 import { Card } from '../../components/Common/Card';
 import Navbar from '../../components/Navbar/Navbar';
 import { generateApplicationPdf } from '../../utils/generateApplicationPdf';
+import { studentApi } from '../../services/studentApi';
 
 const STEPS = [
   { label: 'Personal', icon: <User className="w-4 h-4" /> },
@@ -82,8 +86,29 @@ export default function ApplyFormPage() {
   const [errors, setErrors] = useState({});
   const [uploadingDoc, setUploadingDoc] = useState({});
   const [uploadedFiles, setUploadedFiles] = useState({});
+  const [previewFile, setPreviewFile] = useState(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submittedAppId, setSubmittedAppId] = useState('');
+
+  const location = useLocation();
+
+  // Track Application Status States
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
+  const [trackIdentifier, setTrackIdentifier] = useState('');
+  const [trackDob, setTrackDob] = useState('');
+  const [trackedApplication, setTrackedApplication] = useState(null);
+  const [trackError, setTrackError] = useState('');
+  const [isTrackLoading, setIsTrackLoading] = useState(false);
+  const [isTrackPdfGenerating, setIsTrackPdfGenerating] = useState(false);
+
+  // Monitor URL search params for track=true request
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('track') === 'true') {
+      setIsStatusModalOpen(true);
+      navigate('/apply', { replace: true });
+    }
+  }, [location, navigate]);
 
   const handleInputChange = (section, field, value) => {
     setFormData(prev => ({
@@ -200,6 +225,62 @@ export default function ApplyFormPage() {
     }, 100);
   };
 
+  const handleRemoveDoc = (field) => {
+    handleInputChange('documents', field, '');
+    setUploadedFiles(prev => {
+      const updated = { ...prev };
+      delete updated[field];
+      return updated;
+    });
+  };
+
+  const handlePreviewDoc = (field) => {
+    const file = uploadedFiles[field];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setPreviewFile({
+        name: file.name,
+        url: url,
+        type: file.type
+      });
+    }
+  };
+
+  const handleTrackSubmit = async (e) => {
+    if (e) e.preventDefault();
+    if (!trackIdentifier.trim() || !trackDob) {
+      setTrackError('Please enter both Reference ID/Aadhaar and DOB.');
+      return;
+    }
+    setIsTrackLoading(true);
+    setTrackError('');
+    setTrackedApplication(null);
+
+    try {
+      const data = await studentApi.checkStatus(trackIdentifier.trim(), trackDob);
+      setTrackedApplication(data);
+    } catch (err) {
+      console.error('Tracking failed:', err);
+      setTrackError(err.message || 'Application not found. Please check your credentials.');
+    } finally {
+      setIsTrackLoading(false);
+    }
+  };
+
+  const handleDownloadTrackedPdf = async () => {
+    if (!trackedApplication || isTrackPdfGenerating) return;
+    setIsTrackPdfGenerating(true);
+
+    try {
+      await generateApplicationPdf(trackedApplication, `SVET-Application-${trackedApplication.id}.pdf`);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert('PDF download failed. Please try again.');
+    } finally {
+      setIsTrackPdfGenerating(false);
+    }
+  };
+
   const handleSubmit = async () => {
     try {
       const submissionData = {
@@ -287,6 +368,16 @@ export default function ApplyFormPage() {
               <p className="text-sm text-secondary-text font-light">
                 Provide correct information as per educational records to check university eligibility.
               </p>
+            </div>
+
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setIsStatusModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-2 border border-secondary-blue/30 text-secondary-blue bg-secondary-blue/5 hover:bg-secondary-blue/10 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm hover:shadow"
+              >
+                Already Applied? Track Application Status
+              </button>
             </div>
 
             {/* Progress Tracker */}
@@ -687,10 +778,13 @@ export default function ApplyFormPage() {
                               )}
 
                               <div className="flex items-start justify-between gap-3">
-                                <div className="space-y-1">
+                                <div className="space-y-1 overflow-hidden flex-1">
                                   <span className="text-xs font-bold text-primary-blue block">{doc.label}</span>
                                   {hasFile ? (
-                                    <span className="text-[10px] text-emerald-600 truncate block max-w-[200px] font-bold">{hasFile}</span>
+                                    <div className="flex items-center gap-1">
+                                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" strokeWidth={3} />
+                                      <span className="text-[10px] text-emerald-600 truncate block font-bold" title={hasFile}>{hasFile}</span>
+                                    </div>
                                   ) : isUploading ? (
                                     <span className="text-[10px] text-secondary-blue block">Uploading... {uploadPercent}%</span>
                                   ) : (
@@ -698,11 +792,26 @@ export default function ApplyFormPage() {
                                   )}
                                 </div>
 
-                                <div className="shrink-0">
+                                <div className="shrink-0 flex items-center gap-2">
                                   {hasFile ? (
-                                    <div className="w-8 h-8 rounded-full bg-emerald-600 border border-emerald-600 flex items-center justify-center shadow-sm">
-                                      <Check className="w-4 h-4 text-white" strokeWidth={3.5} />
-                                    </div>
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePreviewDoc(doc.key)}
+                                        className="p-1.5 rounded-lg bg-secondary-bg border border-border-color text-secondary-text hover:text-primary-blue hover:bg-border-color transition-colors cursor-pointer flex items-center justify-center"
+                                        title="Preview Document"
+                                      >
+                                        <Eye className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveDoc(doc.key)}
+                                        className="p-1.5 rounded-lg bg-red-50 border border-red-200 text-red-500 hover:bg-red-100 transition-colors cursor-pointer flex items-center justify-center"
+                                        title="Remove Document"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
                                   ) : (
                                     <label className={`w-8 h-8 rounded-full flex items-center justify-center cursor-pointer border transition-colors ${
                                       isUploading 
@@ -907,18 +1016,285 @@ export default function ApplyFormPage() {
                     <span>Go Home</span>
                   </Button>
                 </Link>
-                <Link to="/admin">
-                  <Button variant="primary" className="w-full gap-2 py-3 justify-center">
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>View Dashboard</span>
-                  </Button>
-                </Link>
               </div>
             </Card>
           </motion.div>
         )}
 
       </div>
+
+      {/* Document Preview Modal */}
+      <AnimatePresence>
+        {previewFile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary-blue/70 backdrop-blur-sm"
+            onClick={() => setPreviewFile(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden relative"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border-color shrink-0">
+                <h3 className="font-display font-extrabold text-lg text-primary-blue truncate max-w-[80%]">
+                  Preview: {previewFile.name}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPreviewFile(null)}
+                  className="p-1.5 rounded-lg hover:bg-primary-bg text-secondary-text hover:text-primary-blue transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 bg-secondary-bg overflow-auto p-4 flex items-center justify-center">
+                {previewFile.type.startsWith('image/') ? (
+                  <img
+                    src={previewFile.url}
+                    alt={previewFile.name}
+                    className="max-w-full max-h-full object-contain rounded"
+                  />
+                ) : previewFile.type === 'application/pdf' ? (
+                  <iframe
+                    src={previewFile.url}
+                    title={previewFile.name}
+                    className="w-full h-full rounded border-0"
+                  />
+                ) : (
+                  <div className="text-center space-y-4 p-8">
+                    <p className="text-sm text-secondary-text">Preview not supported for this file type.</p>
+                    <a
+                      href={previewFile.url}
+                      download={previewFile.name}
+                      className="inline-flex items-center justify-center px-4 py-2 bg-secondary-blue text-white rounded-lg font-semibold text-xs hover:bg-secondary-blue/90 transition-colors"
+                    >
+                      Download to View
+                    </a>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Track Application Status Modal */}
+      <AnimatePresence>
+        {isStatusModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-primary-blue/70 backdrop-blur-sm"
+            onClick={() => {
+              setIsStatusModalOpen(false);
+              setTrackedApplication(null);
+              setTrackError('');
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden relative"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border-color shrink-0 bg-primary-bg">
+                <h3 className="font-display font-extrabold text-lg text-primary-blue">
+                  Track Application Status
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsStatusModalOpen(false);
+                    setTrackedApplication(null);
+                    setTrackError('');
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-white text-secondary-text hover:text-primary-blue transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6">
+                {!trackedApplication ? (
+                  <form onSubmit={handleTrackSubmit} className="space-y-4">
+                    <p className="text-xs text-secondary-text font-light">
+                      Enter your Reference ID (e.g., SVET-2026-021) or your 12-digit Aadhaar Number, along with your Date of Birth to view your application status.
+                    </p>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-secondary-text uppercase font-bold tracking-wider">
+                        Reference ID or Aadhaar Number *
+                      </label>
+                      <input
+                        type="text"
+                        value={trackIdentifier}
+                        onChange={(e) => setTrackIdentifier(e.target.value)}
+                        placeholder="e.g. SVET-2026-021 or 12-digit Aadhaar"
+                        className="w-full bg-white border border-border-color rounded-lg px-4 py-3 text-sm text-primary-text focus:outline-none focus:border-secondary-blue focus:ring-1 focus:ring-secondary-blue/30 h-12 transition-colors"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-secondary-text uppercase font-bold tracking-wider">
+                        Date of Birth *
+                      </label>
+                      <input
+                        type="date"
+                        value={trackDob}
+                        onChange={(e) => setTrackDob(e.target.value)}
+                        className="w-full bg-white border border-border-color rounded-lg px-4 py-3 text-sm text-primary-text focus:outline-none focus:border-secondary-blue focus:ring-1 focus:ring-secondary-blue/30 h-12 transition-colors"
+                        required
+                      />
+                    </div>
+
+                    {trackError && (
+                      <p className="text-xs text-red-500 font-semibold">{trackError}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isTrackLoading}
+                      className="w-full bg-secondary-blue text-white rounded-lg h-12 font-semibold text-sm hover:bg-secondary-blue/90 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isTrackLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin animate-spin-fast" />
+                          <span>Searching...</span>
+                        </>
+                      ) : (
+                        <span>Check Status</span>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Status Ribbon */}
+                    <div className="text-center p-4 bg-primary-bg rounded-xl border border-border-color space-y-2">
+                      <span className="text-xs text-secondary-text block">Current Application Status</span>
+                      <div className="inline-flex">
+                        <span className={`px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                          trackedApplication.status === 'Accepted'
+                            ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20'
+                            : trackedApplication.status === 'Rejected'
+                              ? 'bg-red-500/10 text-red-600 border border-red-500/20'
+                              : trackedApplication.status === 'Under Review'
+                                ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
+                                : 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
+                        }`}>
+                          {trackedApplication.status}
+                        </span>
+                      </div>
+                      {trackedApplication.notes && (
+                        <p className="text-xs text-secondary-text font-light italic mt-2">
+                          Note: "{trackedApplication.notes}"
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Candidate Details Summary */}
+                    <div className="space-y-3">
+                      <h4 className="text-[11px] text-secondary-text uppercase font-bold tracking-wider border-b border-border-color pb-1">
+                        Application Summary
+                      </h4>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs font-light">
+                        <div className="col-span-2 sm:col-span-1">
+                          <strong className="text-primary-blue font-medium">Reference ID:</strong>
+                          <span className="ml-1 font-mono font-semibold">{trackedApplication.id}</span>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1">
+                          <strong className="text-primary-blue font-medium">Applicant Name:</strong>
+                          <span className="ml-1 font-semibold">{trackedApplication.personal.name}</span>
+                        </div>
+                        <div>
+                          <strong className="text-primary-blue font-medium">DOB:</strong>
+                          <span className="ml-1">{trackedApplication.personal.dob}</span>
+                        </div>
+                        <div>
+                          <strong className="text-primary-blue font-medium">Aadhaar:</strong>
+                          <span className="ml-1 font-mono">XXXX-XXXX-{trackedApplication.personal.aadhaar.slice(-4)}</span>
+                        </div>
+                        <div>
+                          <strong className="text-primary-blue font-medium">Pref. Country:</strong>
+                          <span className="ml-1 font-semibold">{trackedApplication.neet.interestedCountry}</span>
+                        </div>
+                        <div>
+                          <strong className="text-primary-blue font-medium">NEET Score:</strong>
+                          <span className="ml-1 font-semibold">{trackedApplication.neet.score} / 720</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Download PDF button */}
+                    <button
+                      type="button"
+                      onClick={handleDownloadTrackedPdf}
+                      disabled={isTrackPdfGenerating}
+                      className={`w-full gap-2 h-11 flex items-center justify-center rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                        isTrackPdfGenerating
+                          ? 'border-emerald-200 text-emerald-400 bg-emerald-50/30 cursor-not-allowed'
+                          : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50/50 bg-white'
+                      }`}
+                    >
+                      {isTrackPdfGenerating ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin text-emerald-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <span>Generating PDF...</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileDown className="w-4 h-4 text-emerald-600" />
+                          <span>Download Application PDF</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackedApplication(null);
+                          setTrackError('');
+                        }}
+                        className="flex-1 bg-white border border-border-color text-secondary-text rounded-lg h-11 font-semibold text-xs hover:bg-primary-bg transition-colors cursor-pointer"
+                      >
+                        Back to Search
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsStatusModalOpen(false);
+                          setTrackedApplication(null);
+                          setTrackError('');
+                        }}
+                        className="flex-1 bg-primary-blue text-white rounded-lg h-11 font-semibold text-xs hover:bg-primary-blue/90 transition-colors cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -79,3 +79,7 @@ class StudentDocumentResponse(BaseModel):
     file_path: str
     mime_type: Optional[str] = None
     file_size: Optional[int] = None
+
+class StudentStatusQuery(BaseModel):
+    identifier: str = Field(..., min_length=1)
+    dob: str = Field(..., min_length=1)

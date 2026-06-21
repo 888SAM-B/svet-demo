@@ -129,7 +129,7 @@ export default function PageBuilderPage() {
       <main className="flex-grow p-6 md:p-10 space-y-6 overflow-y-auto max-h-screen">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/admin/countries')} className="p-2 rounded-lg hover:bg-secondary-bg text-secondary-text hover:text-primary-blue transition-colors cursor-pointer">
+          <button onClick={() => navigate('/country-management')} className="p-2 rounded-lg hover:bg-secondary-bg text-secondary-text hover:text-primary-blue transition-colors cursor-pointer">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>

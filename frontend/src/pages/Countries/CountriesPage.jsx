@@ -199,7 +199,7 @@ export default function CountriesPage() {
                           onEdit={(c) => { setEditing(c); setModalOpen(true); }}
                           onDelete={handleDelete}
                           onToggle={handleToggle}
-                          onBuilder={(id) => navigate(`/admin/countries/${id}/builder`)}
+                          onBuilder={(id) => navigate(`/country-management/${id}/builder`)}
                         />
                       ))
                     )}

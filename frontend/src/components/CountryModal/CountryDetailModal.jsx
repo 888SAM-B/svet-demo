@@ -129,7 +129,7 @@ export default function CountryDetailModal({ slug, onClose }) {
                 {sections.map(section => {
                   const Component = SECTION_MAP[section.section_type];
                   if (!Component) return null;
-                  return <Component key={section.id} section={section} />;
+                  return <Component key={section.id} section={section} country={country} />;
                 })}
               </div>
             )}

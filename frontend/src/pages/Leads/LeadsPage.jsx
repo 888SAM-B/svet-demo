@@ -28,13 +28,8 @@ export default function LeadsPage() {
   const [editingStatusId, setEditingStatusId] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('svet_admin_token');
-    if (!token) {
-      navigate('/admin');
-    } else {
-      loadStudents();
-    }
-  }, [navigate]);
+    loadStudents();
+  }, []);
 
   // Reset preview state if student changes
   const [selectedStudent, setSelectedStudent] = useState(null);

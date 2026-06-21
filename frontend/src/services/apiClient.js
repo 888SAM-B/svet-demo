@@ -28,8 +28,8 @@ export const apiClient = async (endpoint, options = {}) => {
     // Redirect on unauthorized JWT token validation failure
     if (response.status === 401) {
       localStorage.removeItem('svet_admin_token');
-      if (window.location.pathname !== '/admin') {
-        window.location.href = '/admin';
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
       }
       throw new Error('Unauthorized session. Redirecting to login...');
     }

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Lock, User, AlertCircle, Loader2, GraduationCap } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Loader2, GraduationCap } from 'lucide-react';
 import { Button } from '../../components/Common/Button';
 import { Card } from '../../components/Common/Card';
-import { authApi } from '../../services/authApi';
+import { useAuth } from '../../context/AuthContext';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const location = useLocation();
+  const { login } = useAuth();
+
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,7 +20,8 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError('');
 
-    if (!username.trim() || !password.trim()) {
+    const emailClean = email.trim();
+    if (!emailClean || !password.trim()) {
       setError('Please fill out all fields.');
       return;
     }
@@ -25,18 +29,26 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const result = await authApi.login(username.trim(), password.trim());
-      localStorage.setItem('svet_admin_token', result.access_token);
-      navigate('/admin/dashboard');
+      const user = await login(emailClean, password.trim());
+
+      // Determine landing page based on role
+      const from = location.state?.from?.pathname;
+      if (from && from !== '/login') {
+        navigate(from, { replace: true });
+      } else if (user.role === 'COUNTRY_MANAGER') {
+        navigate('/country-management', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err) {
       setLoading(false);
-      setError(err.message || 'Invalid username or password.');
+      setError(err.message || 'Invalid email or password.');
     }
   };
 
   return (
-    <div className="min-h-screen bg-primary-bg text-primary-text relative flex flex-col justify-center items-center p-6">
-      
+    <div className="min-h-screen bg-[#F9F7F7] text-[#112D4E] relative flex flex-col justify-center items-center p-6">
+
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -45,26 +57,26 @@ export default function AdminLoginPage() {
       >
         {/* Back Link */}
         <div className="text-left">
-          <Link to="/" className="text-xs font-semibold text-secondary-text hover:text-primary-blue transition-colors">
+          <Link to="/" className="text-xs font-semibold text-[#3F72AF] hover:text-[#112D4E] transition-colors">
             ← Back to Home
           </Link>
         </div>
 
         {/* Logo Branding */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-xl bg-secondary-blue/10 flex items-center justify-center border border-secondary-blue/20 mx-auto">
-            <GraduationCap className="w-6 h-6 text-secondary-blue" />
+          <div className="w-12 h-12 rounded-xl bg-[#3F72AF]/10 flex items-center justify-center border border-[#3F72AF]/20 mx-auto">
+            <GraduationCap className="w-6 h-6 text-[#3F72AF]" />
           </div>
-          <h2 className="font-display font-extrabold text-2xl text-primary-blue">
-            SVET Admin Portal
+          <h2 className="font-display font-extrabold text-2xl text-[#112D4E]">
+            SVET Control Panel
           </h2>
-          <p className="text-xs text-secondary-text font-light">
-            Sri Venkateshwara Educational Trust Overseas Admissions
+          <p className="text-xs text-[#3F72AF] font-light">
+            Sri Venkateshwara Educational Trust Administrative Login
           </p>
         </div>
 
         {/* Form Card */}
-        <Card className="p-8 bg-white border border-border-color shadow-md">
+        <Card className="p-8 bg-white border border-[#DBE2EF] shadow-md">
           <form onSubmit={handleLogin} className="space-y-5">
             {error && (
               <div className="p-3.5 rounded-lg bg-red-50 border border-red-100 flex items-center gap-2.5 text-xs text-red-600">
@@ -74,23 +86,23 @@ export default function AdminLoginPage() {
             )}
 
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase font-bold tracking-wider text-secondary-text">Username</label>
+              <label className="text-[11px] uppercase font-bold tracking-wider text-[#3F72AF]">Email Address</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
-                  <User className="w-4 h-4" />
+                  <Mail className="w-4 h-4" />
                 </span>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
-                  className="w-full bg-white border border-border-color rounded-lg pl-10 pr-4 py-3 text-sm text-primary-text focus:outline-none focus:border-secondary-blue focus:ring-1 focus:ring-secondary-blue/30 h-12"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="User Email"
+                  className="w-full bg-white border border-[#DBE2EF] rounded-lg pl-10 pr-4 py-3 text-sm text-[#112D4E] focus:outline-none focus:border-[#3F72AF] focus:ring-1 focus:ring-[#3F72AF]/30 h-12"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[11px] uppercase font-bold tracking-wider text-secondary-text">Password</label>
+              <label className="text-[11px] uppercase font-bold tracking-wider text-[#3F72AF]">Password</label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400">
                   <Lock className="w-4 h-4" />
@@ -100,7 +112,7 @@ export default function AdminLoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-white border border-border-color rounded-lg pl-10 pr-4 py-3 text-sm text-primary-text focus:outline-none focus:border-secondary-blue focus:ring-1 focus:ring-secondary-blue/30 h-12"
+                  className="w-full bg-white border border-[#DBE2EF] rounded-lg pl-10 pr-4 py-3 text-sm text-[#112D4E] focus:outline-none focus:border-[#3F72AF] focus:ring-1 focus:ring-[#3F72AF]/30 h-12"
                 />
               </div>
             </div>
@@ -123,10 +135,7 @@ export default function AdminLoginPage() {
           </form>
         </Card>
 
-        {/* Demo Note */}
-        <div className="text-center text-[10px] text-secondary-text/80">
-          Credentials: <code className="text-secondary-blue bg-white border border-border-color px-1.5 py-0.5 rounded font-bold">admin</code> / <code className="text-secondary-blue bg-white border border-border-color px-1.5 py-0.5 rounded font-bold">admin123</code>
-        </div>
+
       </motion.div>
 
     </div>

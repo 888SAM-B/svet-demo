@@ -6,17 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, s
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
-from ..models.admin import Admin
+from ..core.security import require_role
+from ..models.user import User
 from ..models.homepage_gallery import HomepageGalleryImage
 from ..schemas.homepage_gallery_schema import (
     HomepageGalleryImageCreate, HomepageGalleryImageUpdate, GalleryReorder
 )
-from ..routes.country_routes import get_current_admin, save_country_image
+from ..routes.country_routes import save_country_image
 from ..core.config import settings
+from ..services.activity_service import log_activity
 
 # ─── Routers ────────────────────────────────────────────────────────────────
 public_router = APIRouter(prefix="/api/public/gallery", tags=["Homepage Gallery - Public"])
 admin_router  = APIRouter(prefix="/admin/gallery",      tags=["Homepage Gallery - Admin"])
+
+# ─── Auth dependency ─────────────────────────────────────────────────────────
+get_current_admin = require_role(["MASTER_ADMIN", "LEAD_MANAGER"])
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -52,7 +57,7 @@ def get_public_gallery(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("")
-def list_gallery_images(db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def list_gallery_images(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     images = db.query(HomepageGalleryImage).order_by(HomepageGalleryImage.display_order, HomepageGalleryImage.id).all()
     return [fmt_gallery_image(img) for img in images]
 
@@ -61,12 +66,20 @@ def list_gallery_images(db: Session = Depends(get_db), admin: Admin = Depends(ge
 def create_gallery_image(
     payload: HomepageGalleryImageCreate,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     img = HomepageGalleryImage(**payload.model_dump())
     db.add(img)
     db.commit()
     db.refresh(img)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Gallery Updates",
+        metadata={"action": "create", "image_id": img.id, "title": img.title}
+    )
+    
     return fmt_gallery_image(img)
 
 
@@ -75,18 +88,26 @@ def create_gallery_image(
 def reorder_gallery_images(
     payload: GalleryReorder,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     for order, img_id in enumerate(payload.ordered_ids):
         db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == img_id).update({"display_order": order})
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Gallery Updates",
+        metadata={"action": "reorder", "ordered_ids": payload.ordered_ids}
+    )
+    
     return {"message": "Gallery images reordered successfully."}
 
 
 @admin_router.post("/upload")
 def upload_gallery_image(
     file: UploadFile = File(...),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Upload gallery image file and return relative path."""
     path = save_country_image(file, "gallery")
@@ -98,7 +119,7 @@ def update_gallery_image(
     image_id: int,
     payload: HomepageGalleryImageUpdate,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
     if not img:
@@ -110,6 +131,14 @@ def update_gallery_image(
 
     db.commit()
     db.refresh(img)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Gallery Updates",
+        metadata={"action": "update", "image_id": image_id, "title": img.title}
+    )
+    
     return fmt_gallery_image(img)
 
 
@@ -117,11 +146,13 @@ def update_gallery_image(
 def delete_gallery_image(
     image_id: int,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Gallery image not found.")
+
+    img_title = img.title
 
     # Try to delete file from disk if it starts with /uploads
     if img.image_path and img.image_path.startswith("/uploads"):
@@ -135,6 +166,14 @@ def delete_gallery_image(
 
     db.delete(img)
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Gallery Updates",
+        metadata={"action": "delete", "image_id": image_id, "title": img_title}
+    )
+    
     return {"message": "Gallery image deleted successfully."}
 
 
@@ -142,7 +181,7 @@ def delete_gallery_image(
 def toggle_gallery_image(
     image_id: int,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
     if not img:
@@ -151,4 +190,12 @@ def toggle_gallery_image(
     img.is_active = not img.is_active
     db.commit()
     db.refresh(img)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Gallery Updates",
+        metadata={"action": "toggle", "image_id": image_id, "is_active": img.is_active, "title": img.title}
+    )
+    
     return fmt_gallery_image(img)

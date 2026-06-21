@@ -4,15 +4,17 @@ from sqlalchemy import func
 from datetime import datetime, timedelta
 from ..core.database import get_db
 from ..models.student import Student
-from .student_routes import get_current_admin
-from ..models.admin import Admin
+from ..core.security import require_role
+from ..models.user import User
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
+
+get_current_admin = require_role(["MASTER_ADMIN", "LEAD_MANAGER"])
 
 @router.get("/stats")
 def get_dashboard_stats(
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     """Aggregate CRM statistics for charts and cards"""
     # 1. Total registrations

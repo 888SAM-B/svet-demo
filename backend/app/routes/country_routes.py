@@ -8,8 +8,8 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
-from ..core.security import decode_access_token
-from ..models.admin import Admin
+from ..core.security import require_role
+from ..models.user import User
 from ..models.country import Country, CountryPageSection, CountrySEO
 from ..schemas.country_schema import (
     CountryCreate, CountryUpdate,
@@ -17,6 +17,7 @@ from ..schemas.country_schema import (
     CountrySEOCreate, CountryReorder, SectionReorder
 )
 from ..core.config import settings
+from ..services.activity_service import log_activity
 
 # ─── Routers ────────────────────────────────────────────────────────────────
 public_router = APIRouter(prefix="/api/public/countries", tags=["Countries - Public"])
@@ -29,20 +30,7 @@ ALLOWED_EXTENSIONS = {"pdf", "jpg", "jpeg", "png", "webp"}
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 
-# ─── Auth dependency ─────────────────────────────────────────────────────────
-def get_current_admin(
-    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-    db: Session = Depends(get_db),
-) -> Admin:
-    token = credentials.credentials
-    payload = decode_access_token(token)
-    if not payload:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
-    username = payload.get("sub")
-    admin = db.query(Admin).filter(Admin.username == username).first()
-    if not admin:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Admin not found.")
-    return admin
+get_current_admin = require_role(["MASTER_ADMIN", "COUNTRY_MANAGER"])
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -153,13 +141,13 @@ def get_public_country(slug: str, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("")
-def list_countries(db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def list_countries(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     countries = db.query(Country).order_by(Country.display_order, Country.id).all()
     return [fmt_country(c) for c in countries]
 
 
 @admin_router.post("")
-def create_country(payload: CountryCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def create_country(payload: CountryCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     # Duplicate check
     if db.query(Country).filter(Country.name == payload.name).first():
         raise HTTPException(status_code=400, detail="Country name already exists.")
@@ -170,15 +158,31 @@ def create_country(payload: CountryCreate, db: Session = Depends(get_db), admin:
     db.add(country)
     db.commit()
     db.refresh(country)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "create", "country_name": country.name}
+    )
+    
     return fmt_country(country)
 
 
 # NOTE: /reorder and /upload MUST be declared before /{id} to avoid path conflicts
 @admin_router.post("/reorder")
-def reorder_countries(payload: CountryReorder, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def reorder_countries(payload: CountryReorder, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     for order, country_id in enumerate(payload.ordered_ids):
         db.query(Country).filter(Country.id == country_id).update({"display_order": order})
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "reorder", "ordered_ids": payload.ordered_ids}
+    )
+    
     return {"success": True}
 
 
@@ -186,14 +190,14 @@ def reorder_countries(payload: CountryReorder, db: Session = Depends(get_db), ad
 async def upload_country_image(
     file: UploadFile = File(...),
     sub_folder: str = Form(...),
-    admin: Admin = Depends(get_current_admin)
+    admin: User = Depends(get_current_admin)
 ):
     path = save_country_image(file, sub_folder)
     return {"success": True, "path": path}
 
 
 @admin_router.put("/{country_id}")
-def update_country(country_id: int, payload: CountryUpdate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def update_country(country_id: int, payload: CountryUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     country = db.query(Country).filter(Country.id == country_id).first()
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
@@ -212,26 +216,51 @@ def update_country(country_id: int, payload: CountryUpdate, db: Session = Depend
 
     db.commit()
     db.refresh(country)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "update", "country_id": country_id, "country_name": country.name}
+    )
+    
     return fmt_country(country)
 
 
 @admin_router.delete("/{country_id}")
-def delete_country(country_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def delete_country(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     country = db.query(Country).filter(Country.id == country_id).first()
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
+    country_name = country.name
     db.delete(country)
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "delete", "country_id": country_id, "country_name": country_name}
+    )
+    
     return {"success": True, "id": country_id}
 
 
 @admin_router.patch("/{country_id}/toggle")
-def toggle_country(country_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def toggle_country(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     country = db.query(Country).filter(Country.id == country_id).first()
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
     country.is_active = not country.is_active
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "toggle", "country_id": country_id, "is_active": country.is_active, "country_name": country.name}
+    )
+    
     return {"success": True, "id": country_id, "is_active": country.is_active}
 
 
@@ -240,7 +269,7 @@ def toggle_country(country_id: int, db: Session = Depends(get_db), admin: Admin 
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("/{country_id}/sections")
-def list_sections(country_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def list_sections(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     sections = (
         db.query(CountryPageSection)
         .filter(CountryPageSection.country_id == country_id)
@@ -251,7 +280,7 @@ def list_sections(country_id: int, db: Session = Depends(get_db), admin: Admin =
 
 
 @admin_router.post("/{country_id}/sections")
-def create_section(country_id: int, payload: CountrySectionCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def create_section(country_id: int, payload: CountrySectionCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     country = db.query(Country).filter(Country.id == country_id).first()
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
@@ -259,23 +288,39 @@ def create_section(country_id: int, payload: CountrySectionCreate, db: Session =
     db.add(section)
     db.commit()
     db.refresh(section)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "create_section", "country_id": country_id, "section_type": section.section_type}
+    )
+    
     return fmt_section(section)
 
 
 # /sections/reorder BEFORE /sections/{sid}
 @admin_router.post("/{country_id}/sections/reorder")
-def reorder_sections(country_id: int, payload: SectionReorder, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def reorder_sections(country_id: int, payload: SectionReorder, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     for order, section_id in enumerate(payload.ordered_ids):
         db.query(CountryPageSection).filter(
             CountryPageSection.id == section_id,
             CountryPageSection.country_id == country_id
         ).update({"section_order": order})
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "reorder_sections", "country_id": country_id, "ordered_ids": payload.ordered_ids}
+    )
+    
     return {"success": True}
 
 
 @admin_router.put("/{country_id}/sections/{section_id}")
-def update_section(country_id: int, section_id: int, payload: CountrySectionUpdate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def update_section(country_id: int, section_id: int, payload: CountrySectionUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     section = db.query(CountryPageSection).filter(
         CountryPageSection.id == section_id,
         CountryPageSection.country_id == country_id
@@ -287,24 +332,41 @@ def update_section(country_id: int, section_id: int, payload: CountrySectionUpda
         setattr(section, key, val)
     db.commit()
     db.refresh(section)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "update_section", "country_id": country_id, "section_id": section_id, "section_type": section.section_type}
+    )
+    
     return fmt_section(section)
 
 
 @admin_router.delete("/{country_id}/sections/{section_id}")
-def delete_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def delete_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     section = db.query(CountryPageSection).filter(
         CountryPageSection.id == section_id,
         CountryPageSection.country_id == country_id
     ).first()
     if not section:
         raise HTTPException(status_code=404, detail="Section not found.")
+    section_type = section.section_type
     db.delete(section)
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "delete_section", "country_id": country_id, "section_id": section_id, "section_type": section_type}
+    )
+    
     return {"success": True, "id": section_id}
 
 
 @admin_router.patch("/{country_id}/sections/{section_id}/toggle")
-def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     section = db.query(CountryPageSection).filter(
         CountryPageSection.id == section_id,
         CountryPageSection.country_id == country_id
@@ -313,6 +375,14 @@ def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Section not found.")
     section.is_active = not section.is_active
     db.commit()
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "toggle_section", "country_id": country_id, "section_id": section_id, "is_active": section.is_active, "section_type": section.section_type}
+    )
+    
     return {"success": True, "id": section_id, "is_active": section.is_active}
 
 
@@ -321,7 +391,7 @@ def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_d
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("/{country_id}/seo")
-def get_seo(country_id: int, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def get_seo(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     seo = db.query(CountrySEO).filter(CountrySEO.country_id == country_id).first()
     if not seo:
         return {}
@@ -329,7 +399,7 @@ def get_seo(country_id: int, db: Session = Depends(get_db), admin: Admin = Depen
 
 
 @admin_router.post("/{country_id}/seo")
-def upsert_seo(country_id: int, payload: CountrySEOCreate, db: Session = Depends(get_db), admin: Admin = Depends(get_current_admin)):
+def upsert_seo(country_id: int, payload: CountrySEOCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     country = db.query(Country).filter(Country.id == country_id).first()
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
@@ -342,4 +412,12 @@ def upsert_seo(country_id: int, payload: CountrySEOCreate, db: Session = Depends
         db.add(seo)
     db.commit()
     db.refresh(seo)
+    
+    log_activity(
+        db=db,
+        user_id=admin.id,
+        action="Country Updates",
+        metadata={"action": "upsert_seo", "country_id": country_id}
+    )
+    
     return fmt_seo(seo)

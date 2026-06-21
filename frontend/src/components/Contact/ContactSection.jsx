@@ -105,7 +105,7 @@ export default function ContactSection() {
                 <div>
                   <h4 className="font-display font-bold text-sm text-[#112D4E]">Registered Office</h4>
                   <p className="text-xs text-[#3F72AF]/95 mt-1 font-light leading-relaxed">
-                    No. 45, 1st Floor, Gandhi Nagar Main Road, Namakkal
+                    Vazhapadi, Salem District, Tamil Nadu
                   </p>
                 </div>
               </div>

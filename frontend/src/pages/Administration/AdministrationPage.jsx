@@ -54,13 +54,13 @@ export default function AdministrationPage() {
 
   const filteredLogs = logs.filter(log => {
     const term = searchTerm.toLowerCase();
-    const matchesUser = 
+    const matchesUser =
       (log.user_name && log.user_name.toLowerCase().includes(term)) ||
       (log.user_email && log.user_email.toLowerCase().includes(term)) ||
       (!log.user_email && 'system'.includes(term));
     const matchesAction = log.action && log.action.toLowerCase().includes(term);
     const matchesMetadata = log.metadata ? JSON.stringify(log.metadata).toLowerCase().includes(term) : false;
-    
+
     return matchesUser || matchesAction || matchesMetadata;
   });
 
@@ -80,8 +80,8 @@ export default function AdministrationPage() {
               System monitoring, database statistics, and unified audit logs.
             </p>
           </div>
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={loadData}
             className="gap-2 text-xs py-2 px-4 shrink-0 font-semibold"
           >
@@ -99,7 +99,7 @@ export default function AdministrationPage() {
 
         {/* METRICS CARDS */}
         {metrics && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
             <Card className="p-5 bg-white border border-[#DBE2EF] flex items-center justify-between shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-blue-500" />
               <div className="pl-1 text-left">
@@ -111,16 +111,7 @@ export default function AdministrationPage() {
               </div>
             </Card>
 
-            <Card className="p-5 bg-white border border-[#DBE2EF] flex items-center justify-between shadow-sm relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-cyan-500" />
-              <div className="pl-1 text-left">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-[#3F72AF]">Total Leads</span>
-                <h3 className="font-display font-extrabold text-2xl text-[#112D4E] mt-1">{metrics.leads_count}</h3>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-cyan-50 flex items-center justify-center border border-cyan-100 shrink-0">
-                <FileText className="w-5 h-5 text-cyan-600" />
-              </div>
-            </Card>
+
 
             <Card className="p-5 bg-white border border-[#DBE2EF] flex items-center justify-between shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
@@ -156,8 +147,8 @@ export default function AdministrationPage() {
                 System Activity Log & Audit Trail
               </span>
             </div>
-            <input 
-              type="text" 
+            <input
+              type="text"
               placeholder="Search logs by action, admin, metadata..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}

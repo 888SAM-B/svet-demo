@@ -16,6 +16,36 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
+-- Table structure for table `activity_logs`
+--
+
+DROP TABLE IF EXISTS `activity_logs`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `activity_logs` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int DEFAULT NULL,
+  `action` varchar(255) NOT NULL,
+  `timestamp` datetime DEFAULT (now()),
+  `metadata_json` json DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `user_id` (`user_id`),
+  KEY `ix_activity_logs_id` (`id`),
+  CONSTRAINT `activity_logs_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB AUTO_INCREMENT=32 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `activity_logs`
+--
+
+LOCK TABLES `activity_logs` WRITE;
+/*!40000 ALTER TABLE `activity_logs` DISABLE KEYS */;
+INSERT INTO `activity_logs` VALUES (1,1,'User Login','2026-06-21 12:03:59','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(2,1,'User Login','2026-06-21 12:13:11','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(3,1,'Country Updates','2026-06-21 12:13:35','{\"action\": \"update\", \"country_id\": 3, \"country_name\": \"Uzbekistan\"}'),(4,1,'Country Updates','2026-06-21 12:13:58','{\"action\": \"update\", \"country_id\": 3, \"country_name\": \"Uzbekistan\"}'),(5,1,'Country Updates','2026-06-21 12:14:25','{\"action\": \"update\", \"country_id\": 3, \"country_name\": \"Uzbekistan\"}'),(6,1,'User Logout','2026-06-21 12:16:41','{\"email\": \"admin@svet.com\"}'),(7,1,'User Login','2026-06-21 12:17:19','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(8,1,'User Logout','2026-06-21 12:17:25','{\"email\": \"admin@svet.com\"}'),(9,1,'User Login','2026-06-21 12:17:31','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(10,1,'User Logout','2026-06-21 12:19:12','{\"email\": \"admin@svet.com\"}'),(11,1,'User Login','2026-06-21 12:19:14','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(12,1,'User Login','2026-06-21 12:21:17','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(13,1,'Country Updates','2026-06-21 12:22:50','{\"action\": \"update\", \"country_id\": 3, \"country_name\": \"Uzbekistan\"}'),(14,1,'User Login','2026-06-21 12:34:42','{\"role\": \"MASTER_ADMIN\", \"email\": \"admin@svet.com\"}'),(15,1,'Country Updates','2026-06-21 12:37:45','{\"action\": \"update\", \"country_id\": 3, \"country_name\": \"Uzbekistan\"}'),(16,1,'Country Updates','2026-06-21 12:48:06','{\"action\": \"update\", \"country_id\": 4, \"country_name\": \"Russia\"}'),(17,1,'Country Updates','2026-06-21 12:55:27','{\"action\": \"update\", \"country_id\": 6, \"country_name\": \"Georgia\"}'),(18,1,'Country Updates','2026-06-21 12:55:36','{\"action\": \"update\", \"country_id\": 5, \"country_name\": \"Philippines\"}'),(19,1,'Country Updates','2026-06-21 12:55:45','{\"action\": \"update\", \"country_id\": 7, \"country_name\": \"Malaysia\"}'),(20,1,'Country Updates','2026-06-21 12:55:53','{\"action\": \"update\", \"country_id\": 8, \"country_name\": \"Germany\"}'),(21,1,'Country Updates','2026-06-21 12:56:23','{\"action\": \"update\", \"country_id\": 12, \"country_name\": \"United Kingdom\"}'),(22,1,'Country Updates','2026-06-21 12:56:32','{\"action\": \"update\", \"country_id\": 10, \"country_name\": \"United States\"}'),(23,1,'Country Updates','2026-06-21 12:56:43','{\"action\": \"update\", \"country_id\": 11, \"country_name\": \"Kyrgyzstan\"}'),(24,1,'Country Updates','2026-06-21 12:56:51','{\"action\": \"update\", \"country_id\": 9, \"country_name\": \"Singapore\"}'),(25,1,'Country Updates','2026-06-21 12:59:37','{\"action\": \"update\", \"country_id\": 4, \"country_name\": \"Russia\"}'),(26,1,'Country Updates','2026-06-21 13:00:33','{\"action\": \"update\", \"country_id\": 6, \"country_name\": \"Georgia\"}'),(27,1,'User Creation','2026-06-21 13:16:16','{\"role\": \"LEAD_MANAGER\", \"created_email\": \"bsam53888@gmail.com\", \"created_user_id\": 2}'),(28,2,'User Login','2026-06-21 13:16:28','{\"role\": \"LEAD_MANAGER\", \"email\": \"bsam53888@gmail.com\"}'),(29,1,'Lead Updates','2026-06-21 13:18:51','{\"new_status\": \"Document Verification\", \"old_status\": \"Pending Review\", \"student_id\": 2, \"student_name\": \"dsadas\", \"application_id\": \"SVET-2026-022\"}'),(30,1,'Lead Updates','2026-06-21 13:19:05','{\"deleted\": true, \"student_id\": 2, \"student_name\": \"dsadas\", \"application_id\": \"SVET-2026-022\"}'),(31,1,'Lead Updates','2026-06-21 13:19:08','{\"deleted\": true, \"student_id\": 1, \"student_name\": \"Sam\", \"application_id\": \"SVET-2026-021\"}');
+/*!40000 ALTER TABLE `activity_logs` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
 -- Table structure for table `admins`
 --
 
@@ -103,7 +133,7 @@ CREATE TABLE `countries` (
 
 LOCK TABLES `countries` WRITE;
 /*!40000 ALTER TABLE `countries` DISABLE KEYS */;
-INSERT INTO `countries` VALUES (3,'Uzbekistan','uzbekistan','/uploads/countries/flags/d41076a647.png','','Study MBBS in Uzbekistan at internationally recognized medical universities with affordable tuition fees, modern facilities, and a growing Indian student community.',290000.00,0,1,'2026-06-20 17:14:56','2026-06-20 18:54:09'),(4,'Russia','russia','/uploads/countries/flags/c6b80c91c0.jpg','','Study MBBS in Russia at internationally recognized medical universities with affordable tuition fees, modern infrastructure, and extensive clinical exposure.',222606.00,1,1,'2026-06-20 17:28:27','2026-06-20 18:54:17'),(5,'Philippines','philippines','/uploads/countries/flags/a0a6aa7ef1.png','','Study Medicine in the Philippines through internationally recognized medical colleges with a structured Pre-Med and MD pathway, English-medium education, and a student-friendly environment.',380000.00,3,1,'2026-06-20 18:22:28','2026-06-20 18:54:35'),(6,'Georgia','georgia','/uploads/countries/flags/574037dc21.png','','Study MBBS in Georgia at reputed medical universities offering internationally recognized degrees, quality education, and a student-friendly environment.',415000.00,2,1,'2026-06-20 18:26:58','2026-06-20 18:54:26'),(7,'Malaysia','malaysia','/uploads/countries/flags/2d3ef04dec.png','','Study Medicine in Malaysia through internationally focused medical programs with modern facilities, English-medium education, and pathways aligned with global medical standards.',1000000.00,4,1,'2026-06-20 18:30:42','2026-06-20 18:54:43'),(8,'Germany','germany','/uploads/countries/flags/dfe62e8e67.png','','Study in Germany at world-class universities known for academic excellence, research innovation, and strong career opportunities.',1200000.00,5,1,'2026-06-20 18:37:16','2026-06-20 18:54:49'),(9,'Singapore','singapore','/uploads/countries/flags/c1d821f860.png','','Study in Singapore at world-class institutions offering globally recognized qualifications, modern infrastructure, and excellent career opportunities.',1500000.00,6,1,'2026-06-20 18:39:16','2026-06-20 18:55:02'),(10,'United States','usa','/uploads/countries/flags/88f89e2830.png','','Study in the USA through world-leading universities offering advanced education, research opportunities, and global career pathways.',2500000.00,8,1,'2026-06-20 18:41:40','2026-06-20 18:55:10'),(11,'Kyrgyzstan','kyrgyzstan','/uploads/countries/flags/6dd192ce9c.png','','Study MBBS in Kyrgyzstan through affordable medical universities offering English-medium education and growing popularity among international students.',300000.00,9,1,'2026-06-20 18:43:54','2026-06-20 18:55:18'),(12,'United Kingdom','united-kingdom','/uploads/countries/flags/bf2db6f8be.png','','Study in the United Kingdom through internationally recognized universities offering world-class education, scholarship opportunities, and excellent career prospects.',900000.00,5,1,'2026-06-20 18:46:09','2026-06-20 18:54:55');
+INSERT INTO `countries` VALUES (3,'Uzbekistan','uzbekistan','/uploads/countries/flags/d41076a647.png','/uploads/countries/cards/dfa7be5da1.jpeg','Study MBBS in Uzbekistan at internationally recognized medical universities with affordable tuition fees, modern facilities, and a growing Indian student community.',290000.00,0,1,'2026-06-20 17:14:56','2026-06-21 12:37:45'),(4,'Russia','russia','/uploads/countries/flags/c6b80c91c0.jpg','/uploads/countries/cards/acda847e8a.jpg','Study MBBS in Russia at internationally recognized medical universities with affordable tuition fees, modern infrastructure, and extensive clinical exposure.',222606.00,1,1,'2026-06-20 17:28:27','2026-06-21 12:59:37'),(5,'Philippines','philippines','/uploads/countries/flags/a0a6aa7ef1.png','/uploads/countries/cards/4b46dce37d.jpg','Study Medicine in the Philippines through internationally recognized medical colleges with a structured Pre-Med and MD pathway, English-medium education, and a student-friendly environment.',380000.00,3,1,'2026-06-20 18:22:28','2026-06-21 12:55:36'),(6,'Georgia','georgia','/uploads/countries/flags/574037dc21.png','/uploads/countries/cards/993b335956.jpg','Study MBBS in Georgia at reputed medical universities offering internationally recognized degrees, quality education, and a student-friendly environment.',415000.00,2,1,'2026-06-20 18:26:58','2026-06-21 13:00:33'),(7,'Malaysia','malaysia','/uploads/countries/flags/2d3ef04dec.png','/uploads/countries/cards/8126bb05a9.jpg','Study Medicine in Malaysia through internationally focused medical programs with modern facilities, English-medium education, and pathways aligned with global medical standards.',1000000.00,4,1,'2026-06-20 18:30:42','2026-06-21 12:55:45'),(8,'Germany','germany','/uploads/countries/flags/dfe62e8e67.png','/uploads/countries/cards/172ea0a999.jpg','Study in Germany at world-class universities known for academic excellence, research innovation, and strong career opportunities.',1200000.00,5,1,'2026-06-20 18:37:16','2026-06-21 12:55:53'),(9,'Singapore','singapore','/uploads/countries/flags/c1d821f860.png','/uploads/countries/cards/d21eb57046.jpg','Study in Singapore at world-class institutions offering globally recognized qualifications, modern infrastructure, and excellent career opportunities.',1500000.00,6,1,'2026-06-20 18:39:16','2026-06-21 12:56:51'),(10,'United States','usa','/uploads/countries/flags/88f89e2830.png','/uploads/countries/cards/fefaf4b060.jpg','Study in the USA through world-leading universities offering advanced education, research opportunities, and global career pathways.',2500000.00,8,1,'2026-06-20 18:41:40','2026-06-21 12:56:32'),(11,'Kyrgyzstan','kyrgyzstan','/uploads/countries/flags/6dd192ce9c.png','/uploads/countries/cards/7ddd830968.jpg','Study MBBS in Kyrgyzstan through affordable medical universities offering English-medium education and growing popularity among international students.',300000.00,9,1,'2026-06-20 18:43:54','2026-06-21 12:56:43'),(12,'United Kingdom','united-kingdom','/uploads/countries/flags/bf2db6f8be.png','/uploads/countries/cards/533c5687e0.jpg','Study in the United Kingdom through internationally recognized universities offering world-class education, scholarship opportunities, and excellent career prospects.',900000.00,5,1,'2026-06-20 18:46:09','2026-06-21 12:56:23');
 /*!40000 ALTER TABLE `countries` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -220,7 +250,7 @@ CREATE TABLE `student_documents` (
   PRIMARY KEY (`id`),
   KEY `student_id` (`student_id`),
   CONSTRAINT `student_documents_ibfk_1` FOREIGN KEY (`student_id`) REFERENCES `students` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=12 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -229,7 +259,7 @@ CREATE TABLE `student_documents` (
 
 LOCK TABLES `student_documents` WRITE;
 /*!40000 ALTER TABLE `student_documents` DISABLE KEYS */;
-INSERT INTO `student_documents` VALUES (1,1,'marksheet','Screenshot 2026-05-15 193429.png','marksheet.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\marksheet.png','image/png',25228,'2026-06-15 21:36:58'),(2,1,'neetApp','Screenshot 2026-05-14 125142.png','neetApp.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\neetApp.png','image/png',7424,'2026-06-15 21:36:58'),(3,1,'neetScore','Screenshot 2026-05-14 132016.png','neetScore.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\neetScore.png','image/png',2480,'2026-06-15 21:36:58'),(4,1,'photo','Screenshot 2026-05-14 125214.png','photo.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\photo.png','image/png',12673,'2026-06-15 21:36:58'),(5,1,'tc','Screenshot 2026-05-14 132536.png','tc.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\tc.png','image/png',2448,'2026-06-15 21:36:58'),(6,1,'passportFront','Screenshot 2026-05-15 190036.png','passportFront.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\passportFront.png','image/png',339,'2026-06-15 21:36:58'),(7,2,'marksheet','Screenshot 2026-05-15 193429.png','marksheet.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\marksheet.png','image/png',25228,'2026-06-15 22:06:18'),(8,2,'neetApp','Screenshot 2026-05-28 115141.png','neetApp.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\neetApp.png','image/png',46160,'2026-06-15 22:06:18'),(9,2,'neetScore','Screenshot 2026-05-25 221839.png','neetScore.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\neetScore.png','image/png',411342,'2026-06-15 22:06:18'),(10,2,'photo','Screenshot 2026-05-14 132536.png','photo.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\photo.png','image/png',2448,'2026-06-15 22:06:18'),(11,2,'tc','Screenshot 2026-05-25 220639.png','tc.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\tc.png','image/png',125884,'2026-06-15 22:06:18');
+INSERT INTO `student_documents` VALUES (12,3,'marksheet','Screenshot 2026-06-08 181217.png','marksheet.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\marksheet.png','image/png',45377,'2026-06-21 13:26:23'),(13,3,'neetApp','Screenshot 2026-05-14 125214.png','neetApp.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\neetApp.png','image/png',12673,'2026-06-21 13:26:23'),(14,3,'neetScore','Screenshot 2026-05-15 193429.png','neetScore.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\neetScore.png','image/png',25228,'2026-06-21 13:26:23'),(15,3,'photo','Screenshot 2026-05-14 125142.png','photo.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\photo.png','image/png',7424,'2026-06-21 13:26:23'),(16,3,'tc','Screenshot 2026-05-14 132016.png','tc.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-021\\tc.png','image/png',2480,'2026-06-21 13:26:23'),(17,4,'marksheet','Screenshot 2026-05-15 193429.png','marksheet.png','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\marksheet.png','image/png',25228,'2026-06-21 13:35:31'),(18,4,'neetApp','SVET-Application-SVET-2026-021.pdf','neetApp.pdf','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\neetApp.pdf','application/pdf',398750,'2026-06-21 13:35:31'),(19,4,'neetScore','SVET-Application-SVET-2026-021 (1).pdf','neetScore.pdf','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\neetScore.pdf','application/pdf',403832,'2026-06-21 13:35:31'),(20,4,'photo','360_F_207330168_yeIkGximas341ocaW9oqeR31idIXZ7wO.jpg','photo.jpg','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\photo.jpg','image/jpeg',131822,'2026-06-21 13:35:31'),(21,4,'tc','360_F_207330168_yeIkGximas341ocaW9oqeR31idIXZ7wO.jpg','tc.jpg','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\tc.jpg','image/jpeg',131822,'2026-06-21 13:35:31'),(22,4,'passportFront','360_F_207330168_yeIkGximas341ocaW9oqeR31idIXZ7wO.jpg','passportFront.jpg','C:\\Users\\SAM B\\Documents\\dyc-eduworks\\svet\\svet-demo\\backend\\app\\uploads\\students\\SVET-2026-022\\passportFront.jpg','image/jpeg',131822,'2026-06-21 13:35:31');
 /*!40000 ALTER TABLE `student_documents` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -285,7 +315,7 @@ CREATE TABLE `students` (
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `application_id` (`application_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -294,8 +324,40 @@ CREATE TABLE `students` (
 
 LOCK TABLES `students` WRITE;
 /*!40000 ALTER TABLE `students` DISABLE KEYS */;
-INSERT INTO `students` VALUES (1,'SVET-2026-021','Sam',NULL,'9876543210','987654321012','2004-10-19','Male','9/197 UDHAYAMA NAGAR KAMALAPURAM OMALUR','BC','1234567895','Salem','636309','Biology / Maths','5336223','7984651321','Beenjamin Sagayaraj J',NULL,'9876543210',NULL,NULL,NULL,NULL,NULL,83,87,89,0,0,549,86.33,NULL,'798465132',500,NULL,'Germany','MBBS',NULL,'Document Verification',NULL,'2026-06-15 21:36:58','2026-06-15 21:37:42'),(2,'SVET-2026-022','dsadas',NULL,'9080924519','324234234234','2026-07-08','Male','9/197 UDHAYAMA NAGAR KAMALAPURAM OMALUR','MBC','23','salem','636309','Biology / Maths','5336223','3223432','dsfsdf',NULL,'9080924519',NULL,NULL,NULL,NULL,NULL,83,87,89,0,0,549,86.33,NULL,'797845',520,NULL,'Germany','MBBS',NULL,'Pending Review',NULL,'2026-06-15 22:06:18','2026-06-15 22:06:18');
+INSERT INTO `students` VALUES (3,'SVET-2026-021','Sample-applicant',NULL,'9876543210','987654321012','2000-10-19','Male','9/197 UDHAYAMA NAGAR KAMALAPURAM OMALUR','BC','','Salem','636309','Biology / Maths','987654','9876543210','Sample',NULL,'9876543210',NULL,NULL,NULL,NULL,NULL,88,88,88,0,0,549,88.00,NULL,'987654321',550,NULL,'Singapore','MBBS',NULL,'Pending Review',NULL,'2026-06-21 13:26:23','2026-06-21 13:26:23'),(4,'SVET-2026-022','dsdsfdfs',NULL,'3453453454','534534534534','2026-06-11','Male','9/197 UDHAYAMA NAGAR KAMALAPURAM OMALUR','BC','434345','fdgfdfdg','343434','Biology / Maths','77','3453453453','weerw',NULL,'3453453454',NULL,NULL,NULL,NULL,NULL,77,77,88,0,0,555,80.67,NULL,'6565',565,NULL,'Kyrgyzstan','MBBS',NULL,'Pending Review',NULL,'2026-06-21 13:35:31','2026-06-21 13:35:31');
 /*!40000 ALTER TABLE `students` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `users`
+--
+
+DROP TABLE IF EXISTS `users`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `password_hash` text NOT NULL,
+  `role` enum('MASTER_ADMIN','LEAD_MANAGER','COUNTRY_MANAGER') NOT NULL,
+  `is_active` tinyint(1) DEFAULT NULL,
+  `created_at` datetime DEFAULT (now()),
+  `updated_at` datetime DEFAULT (now()),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `ix_users_email` (`email`),
+  KEY `ix_users_id` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `users`
+--
+
+LOCK TABLES `users` WRITE;
+/*!40000 ALTER TABLE `users` DISABLE KEYS */;
+INSERT INTO `users` VALUES (1,'Master Admin','admin@svet.com','$2b$12$8mwFbitEi/dFcBgtoJPd0uxITne6QTKiIhEkpTe1NE1aXg27cPf7G','MASTER_ADMIN',1,'2026-06-21 11:39:45','2026-06-21 11:39:45'),(2,'Sam','bsam53888@gmail.com','$2b$12$dUClUjCWHXczvb9LhFV2z.0FCIeIt.8yT2vCFSNobRwhNOLBuW2MG','LEAD_MANAGER',1,'2026-06-21 13:16:16','2026-06-21 13:16:16');
+/*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -307,4 +369,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-06-20 19:14:42
+-- Dump completed on 2026-06-21 15:13:39

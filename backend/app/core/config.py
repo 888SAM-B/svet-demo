@@ -13,7 +13,11 @@ class Settings:
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 1 day
     
-    # Database Settings
+    # MongoDB Database Settings
+    MONGODB_URL: str = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_DB_NAME: str = os.getenv("MONGODB_DB_NAME", "svet_db")
+
+    # Legacy Database Settings
     DB_HOST: str = os.getenv("DATABASE_HOST", "localhost")
     DB_PORT: str = os.getenv("DATABASE_PORT", "3306")
     DB_USER: str = os.getenv("DATABASE_USER", "root")

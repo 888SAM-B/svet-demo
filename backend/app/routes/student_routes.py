@@ -1,18 +1,14 @@
 import os
 import json
 import re
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Form, File, UploadFile, status
 from fastapi.responses import FileResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from pymongo import ReturnDocument
 
-from ..core.database import get_db
-from ..core.security import require_role
-from ..models.user import User
-from ..models.student import Student, StudentDocument
+from ..core.database import get_db, get_next_sequence
+from ..core.security import require_role, DotDict
 from ..schemas.student_schema import StudentPayload, StudentStatusUpdate, StudentStatusQuery
 from ..services.file_service import file_service
 from ..services.activity_service import log_activity
@@ -25,50 +21,64 @@ get_current_admin = require_role(["MASTER_ADMIN", "LEAD_MANAGER"])
 
 
 # Format Helper for Nested Frontend Response
-def format_student(student: Student) -> dict:
+def format_student(student: dict) -> dict:
     # Build dictionary of uploaded documents
-    doc_dict = {doc.document_type: doc.stored_filename for doc in student.documents}
+    raw_docs = student.get("documents", [])
+    doc_dict = {}
+    if isinstance(raw_docs, list):
+        for doc in raw_docs:
+            if isinstance(doc, dict):
+                doc_dict[doc.get("document_type", "")] = doc.get("stored_filename", "")
     
     # Ensure standard schema defaults are populated if documents are missing
     for d_type in ['marksheet', 'neetApp', 'neetScore', 'photo', 'tc', 'passportFront']:
         if d_type not in doc_dict:
             doc_dict[d_type] = ""
 
+    dob = student.get("date_of_birth")
+    if isinstance(dob, (datetime, date)):
+        dob_str = dob.strftime("%Y-%m-%d")
+    else:
+        dob_str = str(dob) if dob else ""
+
+    created = student.get("created_at")
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created) if created else datetime.now(timezone.utc).isoformat()
+
     return {
-        "id": student.application_id,  # Map to application ID string for frontend compatibility
-        "db_id": student.id,
+        "id": student.get("application_id"),  # Map to application ID string for frontend compatibility
+        "db_id": student.get("id"),
         "personal": {
-            "name": student.full_name,
-            "gender": student.gender or "",
-            "dob": student.date_of_birth.isoformat() if student.date_of_birth else "",
-            "aadhaar": student.aadhaar_number or "",
-            "community": student.community or "",
-            "passportNo": student.passport_number or ""
+            "name": student.get("full_name", ""),
+            "gender": student.get("gender") or "",
+            "dob": dob_str,
+            "aadhaar": student.get("aadhaar_number") or "",
+            "community": student.get("community") or "",
+            "passportNo": student.get("passport_number") or ""
         },
         "parent": {
-            "parentName": student.father_name or "",
-            "mobile1": student.parent_mobile or "",
-            "mobile2": student.parent_mobile2 or "",
-            "address": student.address or "",
-            "district": student.district or "",
-            "pincode": student.pincode or ""
+            "parentName": student.get("father_name") or "",
+            "mobile1": student.get("parent_mobile") or student.get("mobile") or "",
+            "mobile2": student.get("parent_mobile2") or "",
+            "address": student.get("address") or "",
+            "district": student.get("district") or "",
+            "pincode": student.get("pincode") or ""
         },
         "academic": {
-            "hscGroup": student.hsc_group or "",
-            "hscRegisterNo": student.hsc_register_no or "",
-            "physicsMarks": student.physics_mark or 0,
-            "chemistryMarks": student.chemistry_mark or 0,
-            "biologyMarks": student.biology_mark or 0,
-            "totalMarks": student.total_mark or 0
+            "hscGroup": student.get("hsc_group") or "",
+            "hscRegisterNo": student.get("hsc_register_no") or "",
+            "physicsMarks": student.get("physics_mark") or 0,
+            "chemistryMarks": student.get("chemistry_mark") or 0,
+            "biologyMarks": student.get("biology_mark") or 0,
+            "totalMarks": student.get("total_mark") or 0
         },
         "neet": {
-            "score": student.neet_score or 0,
-            "applicationNumber": student.neet_application_number or "",
-            "interestedCountry": student.preferred_country or ""
+            "score": student.get("neet_score") or 0,
+            "applicationNumber": student.get("neet_application_number") or "",
+            "interestedCountry": student.get("preferred_country") or ""
         },
         "documents": doc_dict,
-        "status": student.status,
-        "createdDate": student.created_at.isoformat() if student.created_at else datetime.now(timezone.utc).isoformat()
+        "status": student.get("status", "Pending Review"),
+        "createdDate": created_str
     }
 
 
@@ -81,9 +91,9 @@ async def apply(
     photo: UploadFile = File(...),
     tc: UploadFile = File(...),
     passportFront: Optional[UploadFile] = File(None),
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
-    """Saves student data and files to MySQL & uploads directory"""
+    """Saves student data and files to MongoDB & uploads directory"""
     try:
         data_dict = json.loads(payload)
     except Exception:
@@ -96,10 +106,10 @@ async def apply(
         raise HTTPException(status_code=422, detail=f"Validation error: {err}")
 
     # Generate next sequential application_id
-    latest_student = db.query(Student).order_by(Student.id.desc()).first()
+    latest_student = db.students.find_one({}, sort=[("id", -1)])
     next_num = 21  # Default seed start index (mockStudents defaults to 20)
-    if latest_student:
-        match = re.search(r'SVET-2026-(\d+)', latest_student.application_id)
+    if latest_student and latest_student.get("application_id"):
+        match = re.search(r'SVET-2026-(\d+)', latest_student["application_id"])
         if match:
             next_num = int(match.group(1)) + 1
             if next_num < 21:
@@ -111,47 +121,12 @@ async def apply(
     dob_parsed = None
     if validated_data.personal.dob:
         try:
-            dob_parsed = datetime.strptime(validated_data.personal.dob, "%Y-%m-%d").date()
+            dob_parsed = datetime.strptime(validated_data.personal.dob, "%Y-%m-%d")
         except ValueError:
             pass
 
-    # Create Student Database entry
-    new_student = Student(
-        application_id=application_id,
-        full_name=validated_data.personal.name,
-        email=None,
-        mobile=validated_data.parent.mobile1,
-        aadhaar_number=validated_data.personal.aadhaar,
-        date_of_birth=dob_parsed,
-        gender=validated_data.personal.gender,
-        address=validated_data.parent.address,
-        
-        community=validated_data.personal.community,
-        passport_number=validated_data.personal.passportNo,
-        district=validated_data.parent.district,
-        pincode=validated_data.parent.pincode,
-        hsc_group=validated_data.academic.hscGroup,
-        hsc_register_no=validated_data.academic.hscRegisterNo,
-        parent_mobile2=validated_data.parent.mobile2,
-        
-        father_name=validated_data.parent.parentName,
-        parent_mobile=validated_data.parent.mobile1,
-        
-        physics_mark=validated_data.academic.physicsMarks,
-        chemistry_mark=validated_data.academic.chemistryMarks,
-        biology_mark=validated_data.academic.biologyMarks,
-        total_mark=validated_data.academic.totalMarks,
-        percentage=(validated_data.academic.physicsMarks + validated_data.academic.chemistryMarks + validated_data.academic.biologyMarks) / 3.0,
-        
-        neet_application_number=validated_data.neet.applicationNumber,
-        neet_score=validated_data.neet.score,
-        preferred_country=validated_data.neet.interestedCountry,
-        status="Pending Review"
-    )
-
-    db.add(new_student)
-    db.commit()
-    db.refresh(new_student)
+    student_id = get_next_sequence("students")
+    now = datetime.now(timezone.utc)
 
     # Process and save documents
     files_to_process = {
@@ -164,26 +139,70 @@ async def apply(
     if passportFront:
         files_to_process["passportFront"] = passportFront
 
+    docs_list = []
     try:
         for doc_type, file_obj in files_to_process.items():
             saved_meta = file_service.save_student_file(file_obj, application_id, doc_type)
-            db_doc = StudentDocument(
-                student_id=new_student.id,
-                document_type=doc_type,
-                original_filename=saved_meta["original_filename"],
-                stored_filename=saved_meta["stored_filename"],
-                file_path=saved_meta["file_path"],
-                mime_type=saved_meta["mime_type"],
-                file_size=saved_meta["file_size"]
-            )
-            db.add(db_doc)
+            doc_id = get_next_sequence("student_documents")
+            db_doc = {
+                "id": doc_id,
+                "student_id": student_id,
+                "document_type": doc_type,
+                "original_filename": saved_meta["original_filename"],
+                "stored_filename": saved_meta["stored_filename"],
+                "file_path": saved_meta["file_path"],
+                "mime_type": saved_meta["mime_type"],
+                "file_size": saved_meta["file_size"],
+                "uploaded_at": now
+            }
+            docs_list.append(db_doc)
+            db.student_documents.insert_one(db_doc)
+
+        new_student = {
+            "id": student_id,
+            "application_id": application_id,
+            "full_name": validated_data.personal.name,
+            "email": None,
+            "mobile": validated_data.parent.mobile1,
+            "aadhaar_number": validated_data.personal.aadhaar,
+            "date_of_birth": dob_parsed,
+            "gender": validated_data.personal.gender,
+            "address": validated_data.parent.address,
             
-        db.commit()
-        db.refresh(new_student)
+            "community": validated_data.personal.community,
+            "passport_number": validated_data.personal.passportNo,
+            "district": validated_data.parent.district,
+            "pincode": validated_data.parent.pincode,
+            "hsc_group": validated_data.academic.hscGroup,
+            "hsc_register_no": validated_data.academic.hscRegisterNo,
+            "parent_mobile2": validated_data.parent.mobile2,
+            
+            "father_name": validated_data.parent.parentName,
+            "parent_mobile": validated_data.parent.mobile1,
+            
+            "physics_mark": validated_data.academic.physicsMarks,
+            "chemistry_mark": validated_data.academic.chemistryMarks,
+            "biology_mark": validated_data.academic.biologyMarks,
+            "total_mark": validated_data.academic.totalMarks,
+            "percentage": float((validated_data.academic.physicsMarks + validated_data.academic.chemistryMarks + validated_data.academic.biologyMarks) / 3.0),
+            
+            "neet_application_number": validated_data.neet.applicationNumber,
+            "neet_score": validated_data.neet.score,
+            "preferred_country": validated_data.neet.interestedCountry,
+            "preferred_course": "MBBS",
+            "budget_range": None,
+            "status": "Pending Review",
+            "notes": None,
+            "created_at": now,
+            "updated_at": now,
+            "documents": docs_list
+        }
+        db.students.insert_one(new_student)
+
     except Exception as e:
-        # Cleanup incomplete DB writes
-        db.delete(new_student)
-        db.commit()
+        # Cleanup
+        db.students.delete_one({"id": student_id})
+        db.student_documents.delete_many({"student_id": student_id})
         file_service.delete_student_folder(application_id)
         raise e
 
@@ -193,12 +212,11 @@ async def apply(
 @router.post("/status")
 def check_status(
     payload: StudentStatusQuery,
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
     """Retrieve application status and details publicly using identifier (Aadhaar or App ID) and DOB"""
     try:
-        # Normalize DOB string to Python date
-        dob_parsed = datetime.strptime(payload.dob, "%Y-%m-%d").date()
+        dob_parsed = datetime.strptime(payload.dob, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -207,13 +225,27 @@ def check_status(
 
     identifier_clean = payload.identifier.strip()
 
-    student = db.query(Student).filter(
-        or_(
-            Student.application_id == identifier_clean,
-            Student.aadhaar_number == identifier_clean
-        ),
-        Student.date_of_birth == dob_parsed
-    ).first()
+    # Match identifier against application_id or aadhaar_number, and match DOB
+    # Date in MongoDB could be datetime or date string
+    dob_start = dob_parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+    dob_end = dob_parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    student = db.students.find_one({
+        "$and": [
+            {
+                "$or": [
+                    {"application_id": identifier_clean},
+                    {"aadhaar_number": identifier_clean}
+                ]
+            },
+            {
+                "$or": [
+                    {"date_of_birth": {"$gte": dob_start, "$lte": dob_end}},
+                    {"date_of_birth": payload.dob.strip()}
+                ]
+            }
+        ]
+    })
 
     if not student:
         raise HTTPException(
@@ -230,50 +262,49 @@ def get_students(
     country: Optional[str] = None,
     status: Optional[str] = None,
     date_range: Optional[str] = "all",
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Retrieve all student leads with filtering capabilities"""
-    query = db.query(Student)
+    query = {}
 
     if search:
-        s_term = f"%{search}%"
-        query = query.filter(
-            or_(
-                Student.full_name.like(s_term),
-                Student.parent_mobile.like(s_term),
-                Student.neet_application_number.like(s_term),
-                Student.application_id.like(s_term)
-            )
-        )
+        s_regex = {"$regex": re.escape(search.strip()), "$options": "i"}
+        query["$or"] = [
+            {"full_name": s_regex},
+            {"parent_mobile": s_regex},
+            {"mobile": s_regex},
+            {"neet_application_number": s_regex},
+            {"application_id": s_regex}
+        ]
 
     if country:
-        query = query.filter(Student.preferred_country == country)
+        query["preferred_country"] = country
 
     if status:
-        query = query.filter(Student.status == status)
+        query["status"] = status
 
     if date_range and date_range != "all":
-        today = datetime.now().date()
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         if date_range == "today":
-            query = query.filter(Student.created_at >= today)
+            query["created_at"] = {"$gte": today}
         elif date_range == "last7":
-            query = query.filter(Student.created_at >= today - timedelta(days=7))
+            query["created_at"] = {"$gte": today - timedelta(days=7)}
         elif date_range == "last30":
-            query = query.filter(Student.created_at >= today - timedelta(days=30))
+            query["created_at"] = {"$gte": today - timedelta(days=30)}
 
-    students = query.order_by(Student.created_at.desc()).all()
+    students = list(db.students.find(query).sort("created_at", -1))
     return [format_student(s) for s in students]
 
 
 @router.get("/{student_id}")
 def get_student(
     student_id: str,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Get single student record detail"""
-    student = db.query(Student).filter(Student.application_id == student_id).first()
+    student = db.students.find_one({"application_id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
     return format_student(student)
@@ -283,52 +314,56 @@ def get_student(
 def update_status(
     student_id: str,
     payload: StudentStatusUpdate,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Updates status or notes fields for student"""
-    student = db.query(Student).filter(Student.application_id == student_id).first()
+    student = db.students.find_one({"application_id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
         
-    old_status = student.status
-    student.status = payload.status
+    old_status = student.get("status")
+    update_data = {
+        "status": payload.status,
+        "updated_at": datetime.now(timezone.utc)
+    }
     if payload.notes:
-        student.notes = payload.notes
+        update_data["notes"] = payload.notes
         
-    db.commit()
+    db.students.update_one({"application_id": student_id}, {"$set": update_data})
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Lead Updates",
         metadata={
-            "student_id": student.id,
+            "student_id": student.get("id"),
             "application_id": student_id,
             "old_status": old_status,
-            "new_status": student.status,
-            "student_name": student.full_name
+            "new_status": payload.status,
+            "student_name": student.get("full_name")
         }
     )
     
-    return {"success": True, "id": student_id, "status": student.status}
+    return {"success": True, "id": student_id, "status": payload.status}
 
 
 @router.delete("/{student_id}")
 def delete_student(
     student_id: str,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Deletes student record and removes local document uploads safely"""
-    student = db.query(Student).filter(Student.application_id == student_id).first()
+    student = db.students.find_one({"application_id": student_id})
     if not student:
         raise HTTPException(status_code=404, detail="Student record not found")
         
-    student_id_db = student.id
-    student_name = student.full_name
-    db.delete(student)
-    db.commit()
+    student_id_db = student.get("id")
+    student_name = student.get("full_name")
+    
+    db.students.delete_one({"application_id": student_id})
+    db.student_documents.delete_many({"student_id": student_id_db})
     
     # Safe storage directory wipe
     file_service.delete_student_folder(student_id)
@@ -348,12 +383,12 @@ def delete_student(
     return {"success": True, "id": student_id}
 
 
-# Secure file serving route - placed here for clean routing setup
+# Secure file serving route
 @files_router.get("/{application_id}/{filename}")
 def serve_file(
     application_id: str,
     filename: str,
-    admin: User = Depends(get_current_admin)
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Protected file endpoint returning FileResponse for authorized admins"""
     file_path = file_service.get_student_file_path(application_id, filename)
@@ -362,17 +397,18 @@ def serve_file(
 
 @router.post("/reset")
 def reset_demo(
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     """Deletes all student records, deletes upload directories, and returns empty database state"""
-    students = db.query(Student).all()
+    students = list(db.students.find({}))
     for s in students:
-        file_service.delete_student_folder(s.application_id)
+        app_id = s.get("application_id")
+        if app_id:
+            file_service.delete_student_folder(app_id)
         
-    db.query(StudentDocument).delete()
-    db.query(Student).delete()
-    db.commit()
+    db.student_documents.delete_many({})
+    db.students.delete_many({})
     
     log_activity(
         db=db,
@@ -382,4 +418,3 @@ def reset_demo(
     )
     
     return []
-

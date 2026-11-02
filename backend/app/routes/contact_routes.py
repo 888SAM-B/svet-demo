@@ -1,26 +1,27 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from ..core.database import get_db
-from ..models.contact import ContactEnquiry
+from ..core.database import get_db, get_next_sequence
 from ..schemas.contact_schema import ContactCreate
 from ..services.email_service import email_service
 
 router = APIRouter(prefix="/contact", tags=["Contact"])
 
 @router.post("")
-def create_contact_enquiry(payload: ContactCreate, db: Session = Depends(get_db)):
-    """Creates a contact enquiry and dispatches transactional notification mail via Brevo"""
+def create_contact_enquiry(payload: ContactCreate, db = Depends(get_db)):
+    """Creates a contact enquiry in MongoDB and dispatches transactional notification mail via Brevo"""
     # 1. Save enquiry to database
-    enquiry = ContactEnquiry(
-        name=payload.name,
-        email=payload.email,
-        mobile=payload.mobile,
-        message=payload.message,
-        preferred_country=payload.preferred_country
-    )
-    db.add(enquiry)
-    db.commit()
-    db.refresh(enquiry)
+    enquiry_id = get_next_sequence("contact_enquiries")
+    now = datetime.now(timezone.utc)
+    enquiry = {
+        "id": enquiry_id,
+        "name": payload.name,
+        "email": payload.email,
+        "mobile": payload.mobile,
+        "message": payload.message,
+        "preferred_country": payload.preferred_country,
+        "created_at": now
+    }
+    db.contact_enquiries.insert_one(enquiry)
     
     # 2. Forward to admin inbox using Brevo SMTP
     email_sent = email_service.send_enquiry_email(
@@ -32,11 +33,11 @@ def create_contact_enquiry(payload: ContactCreate, db: Session = Depends(get_db)
     )
     
     return {
-        "id": enquiry.id,
-        "name": enquiry.name,
-        "email": enquiry.email,
-        "mobile": enquiry.mobile,
-        "message": enquiry.message,
-        "preferred_country": enquiry.preferred_country,
+        "id": enquiry["id"],
+        "name": enquiry["name"],
+        "email": enquiry["email"],
+        "mobile": enquiry["mobile"],
+        "message": enquiry["message"],
+        "preferred_country": enquiry["preferred_country"],
         "email_sent": email_sent
     }

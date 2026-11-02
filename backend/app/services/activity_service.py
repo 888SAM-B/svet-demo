@@ -1,22 +1,22 @@
-from sqlalchemy.orm import Session
 from typing import Optional, Any
-from ..models.activity_log import ActivityLog
+from datetime import datetime, timezone
+from ..core.database import get_next_sequence
 
-def log_activity(db: Session, user_id: Optional[int], action: str, metadata: Optional[Any] = None) -> ActivityLog:
+def log_activity(db, user_id: Optional[int], action: str, metadata: Optional[Any] = None) -> Optional[dict]:
     """
-    Log an administrative action in the audit logs.
+    Log an administrative action into MongoDB activity_logs collection.
     """
     try:
-        log_entry = ActivityLog(
-            user_id=user_id,
-            action=action,
-            metadata_json=metadata
-        )
-        db.add(log_entry)
-        db.commit()
-        db.refresh(log_entry)
+        log_id = get_next_sequence("activity_logs")
+        log_entry = {
+            "id": log_id,
+            "user_id": user_id,
+            "action": action,
+            "timestamp": datetime.now(timezone.utc),
+            "metadata_json": metadata
+        }
+        db.activity_logs.insert_one(log_entry)
         return log_entry
     except Exception as e:
         print(f"[Activity Logging Error] Failed to log action '{action}': {e}")
-        db.rollback()
         return None

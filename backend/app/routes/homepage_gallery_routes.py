@@ -1,14 +1,13 @@
 import os
 import uuid
 import shutil
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from sqlalchemy.orm import Session
+from pymongo import ReturnDocument
 
-from ..core.database import get_db
-from ..core.security import require_role
-from ..models.user import User
-from ..models.homepage_gallery import HomepageGalleryImage
+from ..core.database import get_db, get_next_sequence
+from ..core.security import require_role, DotDict
 from ..schemas.homepage_gallery_schema import (
     HomepageGalleryImageCreate, HomepageGalleryImageUpdate, GalleryReorder
 )
@@ -25,14 +24,16 @@ get_current_admin = require_role(["MASTER_ADMIN", "LEAD_MANAGER"])
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-def fmt_gallery_image(img: HomepageGalleryImage) -> dict:
+def fmt_gallery_image(img: dict) -> dict:
+    created = img.get("created_at")
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created) if created else None
     return {
-        "id": img.id,
-        "image_path": img.image_path,
-        "title": img.title,
-        "display_order": img.display_order,
-        "is_active": img.is_active,
-        "created_at": img.created_at.isoformat() if img.created_at else None,
+        "id": img.get("id"),
+        "image_path": img.get("image_path"),
+        "title": img.get("title"),
+        "display_order": img.get("display_order", 0),
+        "is_active": img.get("is_active", True),
+        "created_at": created_str,
     }
 
 
@@ -41,13 +42,11 @@ def fmt_gallery_image(img: HomepageGalleryImage) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @public_router.get("")
-def get_public_gallery(db: Session = Depends(get_db)):
+def get_public_gallery(db = Depends(get_db)):
     """Return all active gallery images ordered by display_order."""
-    images = (
-        db.query(HomepageGalleryImage)
-        .filter(HomepageGalleryImage.is_active == True)
-        .order_by(HomepageGalleryImage.display_order, HomepageGalleryImage.id)
-        .all()
+    images = list(
+        db.homepage_gallery_images.find({"is_active": {"$ne": False}}, {"_id": 0})
+        .sort([("display_order", 1), ("id", 1)])
     )
     return [fmt_gallery_image(img) for img in images]
 
@@ -57,42 +56,47 @@ def get_public_gallery(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("")
-def list_gallery_images(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    images = db.query(HomepageGalleryImage).order_by(HomepageGalleryImage.display_order, HomepageGalleryImage.id).all()
+def list_gallery_images(db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    images = list(
+        db.homepage_gallery_images.find({}, {"_id": 0})
+        .sort([("display_order", 1), ("id", 1)])
+    )
     return [fmt_gallery_image(img) for img in images]
 
 
 @admin_router.post("")
 def create_gallery_image(
     payload: HomepageGalleryImageCreate,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
-    img = HomepageGalleryImage(**payload.model_dump())
-    db.add(img)
-    db.commit()
-    db.refresh(img)
+    img_id = get_next_sequence("homepage_gallery_images")
+    img_data = {
+        "id": img_id,
+        **payload.model_dump(),
+        "created_at": datetime.now(timezone.utc)
+    }
+    db.homepage_gallery_images.insert_one(img_data)
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Gallery Updates",
-        metadata={"action": "create", "image_id": img.id, "title": img.title}
+        metadata={"action": "create", "image_id": img_id, "title": img_data.get("title")}
     )
     
-    return fmt_gallery_image(img)
+    return fmt_gallery_image(img_data)
 
 
 # NOTE: /reorder and /upload must be before /{id}
 @admin_router.post("/reorder")
 def reorder_gallery_images(
     payload: GalleryReorder,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
     for order, img_id in enumerate(payload.ordered_ids):
-        db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == img_id).update({"display_order": order})
-    db.commit()
+        db.homepage_gallery_images.update_one({"id": img_id}, {"$set": {"display_order": order}})
     
     log_activity(
         db=db,
@@ -101,101 +105,88 @@ def reorder_gallery_images(
         metadata={"action": "reorder", "ordered_ids": payload.ordered_ids}
     )
     
-    return {"message": "Gallery images reordered successfully."}
+    return {"success": True}
 
 
 @admin_router.post("/upload")
-def upload_gallery_image(
+async def upload_gallery_image(
     file: UploadFile = File(...),
-    admin: User = Depends(get_current_admin)
+    admin: DotDict = Depends(get_current_admin)
 ):
-    """Upload gallery image file and return relative path."""
+    """Upload an image to gallery subfolder and return its URL."""
     path = save_country_image(file, "gallery")
-    return {"image_path": path}
+    return {"success": True, "path": path}
 
 
 @admin_router.put("/{image_id}")
 def update_gallery_image(
     image_id: int,
     payload: HomepageGalleryImageUpdate,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
-    img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
+    img = db.homepage_gallery_images.find_one({"id": image_id})
     if not img:
         raise HTTPException(status_code=404, detail="Gallery image not found.")
 
-    data = payload.model_dump(exclude_unset=True)
-    for k, v in data.items():
-        setattr(img, k, v)
-
-    db.commit()
-    db.refresh(img)
+    update_data = payload.model_dump(exclude_unset=True)
+    updated = db.homepage_gallery_images.find_one_and_update(
+        {"id": image_id},
+        {"$set": update_data},
+        return_document=ReturnDocument.AFTER
+    )
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Gallery Updates",
-        metadata={"action": "update", "image_id": image_id, "title": img.title}
+        metadata={"action": "update", "image_id": image_id, "title": updated.get("title")}
     )
     
-    return fmt_gallery_image(img)
+    return fmt_gallery_image(updated)
 
 
 @admin_router.delete("/{image_id}")
 def delete_gallery_image(
     image_id: int,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
-    img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
+    img = db.homepage_gallery_images.find_one({"id": image_id})
     if not img:
         raise HTTPException(status_code=404, detail="Gallery image not found.")
 
-    img_title = img.title
-
-    # Try to delete file from disk if it starts with /uploads
-    if img.image_path and img.image_path.startswith("/uploads"):
-        rel_path = img.image_path.lstrip("/")
-        abs_path = os.path.join(settings.UPLOAD_DIR, "..", rel_path)
-        if os.path.exists(abs_path):
-            try:
-                os.remove(abs_path)
-            except Exception as e:
-                print(f"[Gallery] Failed to remove file from disk: {e}")
-
-    db.delete(img)
-    db.commit()
+    title = img.get("title")
+    db.homepage_gallery_images.delete_one({"id": image_id})
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Gallery Updates",
-        metadata={"action": "delete", "image_id": image_id, "title": img_title}
+        metadata={"action": "delete", "image_id": image_id, "title": title}
     )
     
-    return {"message": "Gallery image deleted successfully."}
+    return {"success": True, "id": image_id}
 
 
 @admin_router.patch("/{image_id}/toggle")
 def toggle_gallery_image(
     image_id: int,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_current_admin)
+    db = Depends(get_db),
+    admin: DotDict = Depends(get_current_admin)
 ):
-    img = db.query(HomepageGalleryImage).filter(HomepageGalleryImage.id == image_id).first()
+    img = db.homepage_gallery_images.find_one({"id": image_id})
     if not img:
         raise HTTPException(status_code=404, detail="Gallery image not found.")
 
-    img.is_active = not img.is_active
-    db.commit()
-    db.refresh(img)
+    new_active = not img.get("is_active", True)
+    db.homepage_gallery_images.update_one({"id": image_id}, {"$set": {"is_active": new_active}})
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Gallery Updates",
-        metadata={"action": "toggle", "image_id": image_id, "is_active": img.is_active, "title": img.title}
+        metadata={"action": "toggle", "image_id": image_id, "is_active": new_active, "title": img.get("title")}
     )
     
-    return fmt_gallery_image(img)
+    return {"success": True, "id": image_id, "is_active": new_active}

@@ -4,12 +4,21 @@ import jwt
 import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from .config import settings
 from .database import get_db
-from ..models.user import User
 
 security_scheme = HTTPBearer()
+
+class DotDict(dict):
+    """Dictionary supporting dot notation attribute access (e.g. user.id, user.email)"""
+    def __getattr__(self, item):
+        try:
+            return self[item]
+        except KeyError:
+            return None
+            
+    def __setattr__(self, key, value):
+        self[key] = value
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Compare plain password with hashed DB version"""
@@ -26,7 +35,6 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(user_id: int, role: str, expires_delta: Optional[timedelta] = None) -> str:
     """Generate user access JWT token with ID and role claims"""
-    # Import inside function to avoid circular imports if any
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -53,12 +61,12 @@ def decode_access_token(token: str) -> Union[dict, None]:
 
 def require_role(allowed_roles: List[str]):
     """
-    Dependency generator for route-level role-based authorization checks.
+    Dependency generator for route-level role-based authorization checks with MongoDB.
     """
     def dependency(
         credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-        db: Session = Depends(get_db)
-    ) -> User:
+        db = Depends(get_db)
+    ) -> DotDict:
         token = credentials.credentials
         payload = decode_access_token(token)
         if not payload:
@@ -75,13 +83,14 @@ def require_role(allowed_roles: List[str]):
                 detail="Token payload is missing user identifiers."
             )
             
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
+        user_data = db.users.find_one({"id": user_id})
+        if not user_data:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authorized profile not found."
             )
             
+        user = DotDict(user_data)
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

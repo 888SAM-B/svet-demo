@@ -1,16 +1,14 @@
 import os
 import uuid
 import shutil
-import re
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
+from fastapi.security import HTTPBearer
+from pymongo import ReturnDocument
 
-from ..core.database import get_db
-from ..core.security import require_role
-from ..models.user import User
-from ..models.country import Country, CountryPageSection, CountrySEO
+from ..core.database import get_db, get_next_sequence
+from ..core.security import require_role, DotDict
 from ..schemas.country_schema import (
     CountryCreate, CountryUpdate,
     CountrySectionCreate, CountrySectionUpdate,
@@ -34,42 +32,49 @@ get_current_admin = require_role(["MASTER_ADMIN", "COUNTRY_MANAGER"])
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
-def fmt_country(c: Country) -> dict:
+def fmt_country(c: dict) -> dict:
+    created = c.get("created_at")
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created) if created else None
+    fee = c.get("starting_fee")
     return {
-        "id": c.id,
-        "name": c.name,
-        "slug": c.slug,
-        "flag_image": c.flag_image,
-        "card_image": c.card_image,
-        "short_description": c.short_description,
-        "starting_fee": float(c.starting_fee) if c.starting_fee else None,
-        "display_order": c.display_order,
-        "is_active": c.is_active,
-        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "id": c.get("id"),
+        "name": c.get("name"),
+        "slug": c.get("slug"),
+        "flag_image": c.get("flag_image"),
+        "card_image": c.get("card_image"),
+        "short_description": c.get("short_description"),
+        "starting_fee": float(fee) if fee is not None else None,
+        "display_order": c.get("display_order", 0),
+        "is_active": c.get("is_active", True),
+        "created_at": created_str,
     }
 
 
-def fmt_section(s: CountryPageSection) -> dict:
+def fmt_section(s: dict) -> dict:
+    created = s.get("created_at")
+    created_str = created.isoformat() if hasattr(created, "isoformat") else str(created) if created else None
     return {
-        "id": s.id,
-        "country_id": s.country_id,
-        "section_type": s.section_type,
-        "section_title": s.section_title,
-        "section_order": s.section_order,
-        "content_json": s.content_json,
-        "is_active": s.is_active,
-        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "id": s.get("id"),
+        "country_id": s.get("country_id"),
+        "section_type": s.get("section_type"),
+        "section_title": s.get("section_title"),
+        "section_order": s.get("section_order", 0),
+        "content_json": s.get("content_json"),
+        "is_active": s.get("is_active", True),
+        "created_at": created_str,
     }
 
 
-def fmt_seo(seo: CountrySEO) -> dict:
+def fmt_seo(seo: dict) -> dict:
+    if not seo:
+        return {}
     return {
-        "id": seo.id,
-        "country_id": seo.country_id,
-        "meta_title": seo.meta_title,
-        "meta_description": seo.meta_description,
-        "keywords": seo.keywords,
-        "og_image": seo.og_image,
+        "id": seo.get("id"),
+        "country_id": seo.get("country_id"),
+        "meta_title": seo.get("meta_title"),
+        "meta_description": seo.get("meta_description"),
+        "keywords": seo.get("keywords"),
+        "og_image": seo.get("og_image"),
     }
 
 
@@ -112,28 +117,35 @@ def save_country_image(file: UploadFile, sub_folder: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @public_router.get("")
-def get_public_countries(db: Session = Depends(get_db)):
+def get_public_countries(db = Depends(get_db)):
     """Return all active countries ordered by display_order."""
-    countries = (
-        db.query(Country)
-        .filter(Country.is_active == True)
-        .order_by(Country.display_order, Country.id)
-        .all()
+    countries = list(
+        db.countries.find({"is_active": {"$ne": False}}, {"_id": 0})
+        .sort([("display_order", 1), ("id", 1)])
     )
     return [fmt_country(c) for c in countries]
 
 
 @public_router.get("/{slug}")
-def get_public_country(slug: str, db: Session = Depends(get_db)):
+def get_public_country(slug: str, db = Depends(get_db)):
     """Return country + active sections + SEO for the modal."""
-    country = db.query(Country).filter(Country.slug == slug, Country.is_active == True).first()
+    country = db.countries.find_one({"slug": slug, "is_active": {"$ne": False}}, {"_id": 0})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
 
-    sections = [fmt_section(s) for s in country.sections if s.is_active]
-    seo = fmt_seo(country.seo) if country.seo else {}
+    sections = list(
+        db.country_page_sections.find(
+            {"country_id": country["id"], "is_active": {"$ne": False}},
+            {"_id": 0}
+        ).sort("section_order", 1)
+    )
+    seo = db.country_seo.find_one({"country_id": country["id"]}, {"_id": 0})
 
-    return {"country": fmt_country(country), "sections": sections, "seo": seo}
+    return {
+        "country": fmt_country(country),
+        "sections": [fmt_section(s) for s in sections],
+        "seo": fmt_seo(seo)
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -141,40 +153,47 @@ def get_public_country(slug: str, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("")
-def list_countries(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    countries = db.query(Country).order_by(Country.display_order, Country.id).all()
+def list_countries(db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    countries = list(
+        db.countries.find({}, {"_id": 0})
+        .sort([("display_order", 1), ("id", 1)])
+    )
     return [fmt_country(c) for c in countries]
 
 
 @admin_router.post("")
-def create_country(payload: CountryCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+def create_country(payload: CountryCreate, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
     # Duplicate check
-    if db.query(Country).filter(Country.name == payload.name).first():
+    if db.countries.find_one({"name": payload.name}):
         raise HTTPException(status_code=400, detail="Country name already exists.")
-    if db.query(Country).filter(Country.slug == payload.slug).first():
+    if db.countries.find_one({"slug": payload.slug}):
         raise HTTPException(status_code=400, detail="Slug already exists.")
 
-    country = Country(**payload.model_dump())
-    db.add(country)
-    db.commit()
-    db.refresh(country)
+    country_id = get_next_sequence("countries")
+    now = datetime.now(timezone.utc)
+    country_data = {
+        "id": country_id,
+        **payload.model_dump(),
+        "created_at": now,
+        "updated_at": now
+    }
+    db.countries.insert_one(country_data)
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "create", "country_name": country.name}
+        metadata={"action": "create", "country_name": country_data.get("name")}
     )
     
-    return fmt_country(country)
+    return fmt_country(country_data)
 
 
 # NOTE: /reorder and /upload MUST be declared before /{id} to avoid path conflicts
 @admin_router.post("/reorder")
-def reorder_countries(payload: CountryReorder, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+def reorder_countries(payload: CountryReorder, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
     for order, country_id in enumerate(payload.ordered_ids):
-        db.query(Country).filter(Country.id == country_id).update({"display_order": order})
-    db.commit()
+        db.countries.update_one({"id": country_id}, {"$set": {"display_order": order}})
     
     log_activity(
         db=db,
@@ -190,51 +209,56 @@ def reorder_countries(payload: CountryReorder, db: Session = Depends(get_db), ad
 async def upload_country_image(
     file: UploadFile = File(...),
     sub_folder: str = Form(...),
-    admin: User = Depends(get_current_admin)
+    admin: DotDict = Depends(get_current_admin)
 ):
     path = save_country_image(file, sub_folder)
     return {"success": True, "path": path}
 
 
 @admin_router.put("/{country_id}")
-def update_country(country_id: int, payload: CountryUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    country = db.query(Country).filter(Country.id == country_id).first()
+def update_country(country_id: int, payload: CountryUpdate, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    country = db.countries.find_one({"id": country_id})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
 
     # Duplicate slug check (exclude self)
-    if payload.slug and payload.slug != country.slug:
-        if db.query(Country).filter(Country.slug == payload.slug, Country.id != country_id).first():
+    if payload.slug and payload.slug != country.get("slug"):
+        if db.countries.find_one({"slug": payload.slug, "id": {"$ne": country_id}}):
             raise HTTPException(status_code=400, detail="Slug already in use.")
-    if payload.name and payload.name != country.name:
-        if db.query(Country).filter(Country.name == payload.name, Country.id != country_id).first():
+    if payload.name and payload.name != country.get("name"):
+        if db.countries.find_one({"name": payload.name, "id": {"$ne": country_id}}):
             raise HTTPException(status_code=400, detail="Country name already in use.")
 
     update_data = payload.model_dump(exclude_unset=True)
-    for key, val in update_data.items():
-        setattr(country, key, val)
+    update_data["updated_at"] = datetime.now(timezone.utc)
 
-    db.commit()
-    db.refresh(country)
+    updated = db.countries.find_one_and_update(
+        {"id": country_id},
+        {"$set": update_data},
+        return_document=ReturnDocument.AFTER
+    )
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "update", "country_id": country_id, "country_name": country.name}
+        metadata={"action": "update", "country_id": country_id, "country_name": updated.get("name")}
     )
     
-    return fmt_country(country)
+    return fmt_country(updated)
 
 
 @admin_router.delete("/{country_id}")
-def delete_country(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    country = db.query(Country).filter(Country.id == country_id).first()
+def delete_country(country_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    country = db.countries.find_one({"id": country_id})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
-    country_name = country.name
-    db.delete(country)
-    db.commit()
+    country_name = country.get("name")
+    
+    # Cascade delete country, its sections, and its SEO
+    db.countries.delete_one({"id": country_id})
+    db.country_page_sections.delete_many({"country_id": country_id})
+    db.country_seo.delete_one({"country_id": country_id})
     
     log_activity(
         db=db,
@@ -247,21 +271,22 @@ def delete_country(country_id: int, db: Session = Depends(get_db), admin: User =
 
 
 @admin_router.patch("/{country_id}/toggle")
-def toggle_country(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    country = db.query(Country).filter(Country.id == country_id).first()
+def toggle_country(country_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    country = db.countries.find_one({"id": country_id})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
-    country.is_active = not country.is_active
-    db.commit()
+        
+    new_active = not country.get("is_active", True)
+    db.countries.update_one({"id": country_id}, {"$set": {"is_active": new_active, "updated_at": datetime.now(timezone.utc)}})
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "toggle", "country_id": country_id, "is_active": country.is_active, "country_name": country.name}
+        metadata={"action": "toggle", "country_id": country_id, "is_active": new_active, "country_name": country.get("name")}
     )
     
-    return {"success": True, "id": country_id, "is_active": country.is_active}
+    return {"success": True, "id": country_id, "is_active": new_active}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -269,45 +294,47 @@ def toggle_country(country_id: int, db: Session = Depends(get_db), admin: User =
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("/{country_id}/sections")
-def list_sections(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    sections = (
-        db.query(CountryPageSection)
-        .filter(CountryPageSection.country_id == country_id)
-        .order_by(CountryPageSection.section_order)
-        .all()
+def list_sections(country_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    sections = list(
+        db.country_page_sections.find({"country_id": country_id}, {"_id": 0})
+        .sort("section_order", 1)
     )
     return [fmt_section(s) for s in sections]
 
 
 @admin_router.post("/{country_id}/sections")
-def create_section(country_id: int, payload: CountrySectionCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    country = db.query(Country).filter(Country.id == country_id).first()
+def create_section(country_id: int, payload: CountrySectionCreate, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    country = db.countries.find_one({"id": country_id})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
-    section = CountryPageSection(country_id=country_id, **payload.model_dump())
-    db.add(section)
-    db.commit()
-    db.refresh(section)
+        
+    section_id = get_next_sequence("country_page_sections")
+    section_data = {
+        "id": section_id,
+        "country_id": country_id,
+        **payload.model_dump(),
+        "created_at": datetime.now(timezone.utc)
+    }
+    db.country_page_sections.insert_one(section_data)
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "create_section", "country_id": country_id, "section_type": section.section_type}
+        metadata={"action": "create_section", "country_id": country_id, "section_type": section_data.get("section_type")}
     )
     
-    return fmt_section(section)
+    return fmt_section(section_data)
 
 
 # /sections/reorder BEFORE /sections/{sid}
 @admin_router.post("/{country_id}/sections/reorder")
-def reorder_sections(country_id: int, payload: SectionReorder, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+def reorder_sections(country_id: int, payload: SectionReorder, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
     for order, section_id in enumerate(payload.ordered_ids):
-        db.query(CountryPageSection).filter(
-            CountryPageSection.id == section_id,
-            CountryPageSection.country_id == country_id
-        ).update({"section_order": order})
-    db.commit()
+        db.country_page_sections.update_one(
+            {"id": section_id, "country_id": country_id},
+            {"$set": {"section_order": order}}
+        )
     
     log_activity(
         db=db,
@@ -320,40 +347,36 @@ def reorder_sections(country_id: int, payload: SectionReorder, db: Session = Dep
 
 
 @admin_router.put("/{country_id}/sections/{section_id}")
-def update_section(country_id: int, section_id: int, payload: CountrySectionUpdate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    section = db.query(CountryPageSection).filter(
-        CountryPageSection.id == section_id,
-        CountryPageSection.country_id == country_id
-    ).first()
+def update_section(country_id: int, section_id: int, payload: CountrySectionUpdate, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    section = db.country_page_sections.find_one({"id": section_id, "country_id": country_id})
     if not section:
         raise HTTPException(status_code=404, detail="Section not found.")
+        
     update_data = payload.model_dump(exclude_unset=True)
-    for key, val in update_data.items():
-        setattr(section, key, val)
-    db.commit()
-    db.refresh(section)
+    updated = db.country_page_sections.find_one_and_update(
+        {"id": section_id, "country_id": country_id},
+        {"$set": update_data},
+        return_document=ReturnDocument.AFTER
+    )
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "update_section", "country_id": country_id, "section_id": section_id, "section_type": section.section_type}
+        metadata={"action": "update_section", "country_id": country_id, "section_id": section_id, "section_type": updated.get("section_type")}
     )
     
-    return fmt_section(section)
+    return fmt_section(updated)
 
 
 @admin_router.delete("/{country_id}/sections/{section_id}")
-def delete_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    section = db.query(CountryPageSection).filter(
-        CountryPageSection.id == section_id,
-        CountryPageSection.country_id == country_id
-    ).first()
+def delete_section(country_id: int, section_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    section = db.country_page_sections.find_one({"id": section_id, "country_id": country_id})
     if not section:
         raise HTTPException(status_code=404, detail="Section not found.")
-    section_type = section.section_type
-    db.delete(section)
-    db.commit()
+    section_type = section.get("section_type")
+    
+    db.country_page_sections.delete_one({"id": section_id, "country_id": country_id})
     
     log_activity(
         db=db,
@@ -366,24 +389,25 @@ def delete_section(country_id: int, section_id: int, db: Session = Depends(get_d
 
 
 @admin_router.patch("/{country_id}/sections/{section_id}/toggle")
-def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    section = db.query(CountryPageSection).filter(
-        CountryPageSection.id == section_id,
-        CountryPageSection.country_id == country_id
-    ).first()
+def toggle_section(country_id: int, section_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    section = db.country_page_sections.find_one({"id": section_id, "country_id": country_id})
     if not section:
         raise HTTPException(status_code=404, detail="Section not found.")
-    section.is_active = not section.is_active
-    db.commit()
+        
+    new_active = not section.get("is_active", True)
+    db.country_page_sections.update_one(
+        {"id": section_id, "country_id": country_id},
+        {"$set": {"is_active": new_active}}
+    )
     
     log_activity(
         db=db,
         user_id=admin.id,
         action="Country Updates",
-        metadata={"action": "toggle_section", "country_id": country_id, "section_id": section_id, "is_active": section.is_active, "section_type": section.section_type}
+        metadata={"action": "toggle_section", "country_id": country_id, "section_id": section_id, "is_active": new_active, "section_type": section.get("section_type")}
     )
     
-    return {"success": True, "id": section_id, "is_active": section.is_active}
+    return {"success": True, "id": section_id, "is_active": new_active}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -391,28 +415,37 @@ def toggle_section(country_id: int, section_id: int, db: Session = Depends(get_d
 # ══════════════════════════════════════════════════════════════════════════════
 
 @admin_router.get("/{country_id}/seo")
-def get_seo(country_id: int, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    seo = db.query(CountrySEO).filter(CountrySEO.country_id == country_id).first()
+def get_seo(country_id: int, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    seo = db.country_seo.find_one({"country_id": country_id}, {"_id": 0})
     if not seo:
         return {}
     return fmt_seo(seo)
 
 
 @admin_router.post("/{country_id}/seo")
-def upsert_seo(country_id: int, payload: CountrySEOCreate, db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
-    country = db.query(Country).filter(Country.id == country_id).first()
+def upsert_seo(country_id: int, payload: CountrySEOCreate, db = Depends(get_db), admin: DotDict = Depends(get_current_admin)):
+    country = db.countries.find_one({"id": country_id})
     if not country:
         raise HTTPException(status_code=404, detail="Country not found.")
-    seo = db.query(CountrySEO).filter(CountrySEO.country_id == country_id).first()
-    if seo:
-        for key, val in payload.model_dump(exclude_unset=True).items():
-            setattr(seo, key, val)
+        
+    existing = db.country_seo.find_one({"country_id": country_id})
+    if existing:
+        updated = db.country_seo.find_one_and_update(
+            {"country_id": country_id},
+            {"$set": payload.model_dump(exclude_unset=True)},
+            return_document=ReturnDocument.AFTER
+        )
+        res_data = updated
     else:
-        seo = CountrySEO(country_id=country_id, **payload.model_dump())
-        db.add(seo)
-    db.commit()
-    db.refresh(seo)
-    
+        seo_id = get_next_sequence("country_seo")
+        seo_data = {
+            "id": seo_id,
+            "country_id": country_id,
+            **payload.model_dump()
+        }
+        db.country_seo.insert_one(seo_data)
+        res_data = seo_data
+        
     log_activity(
         db=db,
         user_id=admin.id,
@@ -420,4 +453,4 @@ def upsert_seo(country_id: int, payload: CountrySEOCreate, db: Session = Depends
         metadata={"action": "upsert_seo", "country_id": country_id}
     )
     
-    return fmt_seo(seo)
+    return fmt_seo(res_data)

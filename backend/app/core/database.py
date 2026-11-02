@@ -1,38 +1,57 @@
-import pymysql
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from pymongo import MongoClient, ASCENDING, DESCENDING, ReturnDocument
 from .config import settings
 
-# Auto-create database if not exists
-try:
-    conn = pymysql.connect(
-        host=settings.DB_HOST,
-        port=int(settings.DB_PORT),
-        user=settings.DB_USER,
-        password=settings.DB_PASS
-    )
-    with conn.cursor() as cursor:
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {settings.DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;")
-    conn.commit()
-    conn.close()
-    print(f"[Database] Successfully verified/created database: {settings.DB_NAME}")
-except Exception as e:
-    print(f"[Database] Warning: Failed to automatically check/create database: {e}")
-
-# Create database engine with connection pooling enabled
-engine = create_engine(
-    settings.DATABASE_URL, 
-    pool_pre_ping=True,  # checks connection liveliness
-    pool_recycle=3600    # recycle connection after 1 hour
+# Initialize PyMongo Client with connection pooling
+client = MongoClient(
+    settings.MONGODB_URL,
+    maxPoolSize=50,
+    minPoolSize=5,
+    serverSelectionTimeoutMS=5000
 )
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+# Active Database
+db = client[settings.MONGODB_DB_NAME]
 
 def get_db():
-    db = SessionLocal()
+    """
+    FastAPI dependency yielding the active MongoDB database instance.
+    """
+    yield db
+
+def get_next_sequence(name: str) -> int:
+    """
+    Atomically generates sequential integer IDs (1, 2, 3...)
+    for collections to preserve seamless compatibility with frontend IDs.
+    """
+    seq_doc = db.counters.find_one_and_update(
+        {"_id": name},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    return int(seq_doc["seq"])
+
+def init_db_indexes():
+    """
+    Create necessary indexes for performance and unique constraints.
+    """
     try:
-        yield db
-    finally:
-        db.close()
+        db.users.create_index([("email", ASCENDING)], unique=True)
+        db.users.create_index([("id", ASCENDING)], unique=True)
+        db.students.create_index([("application_id", ASCENDING)], unique=True)
+        db.students.create_index([("id", ASCENDING)], unique=True)
+        db.students.create_index([("status", ASCENDING)])
+        db.students.create_index([("preferred_country", ASCENDING)])
+        db.students.create_index([("created_at", DESCENDING)])
+        db.countries.create_index([("slug", ASCENDING)], unique=True)
+        db.countries.create_index([("id", ASCENDING)], unique=True)
+        db.countries.create_index([("display_order", ASCENDING)])
+        db.country_page_sections.create_index([("country_id", ASCENDING), ("section_order", ASCENDING)])
+        db.country_page_sections.create_index([("id", ASCENDING)], unique=True)
+        db.country_seo.create_index([("country_id", ASCENDING)], unique=True)
+        db.homepage_gallery_images.create_index([("display_order", ASCENDING)])
+        db.homepage_gallery_images.create_index([("id", ASCENDING)], unique=True)
+        db.activity_logs.create_index([("timestamp", DESCENDING)])
+        print(f"[MongoDB] Successfully verified and initialized indexes on '{settings.MONGODB_DB_NAME}'.")
+    except Exception as e:
+        print(f"[MongoDB] Warning: Could not initialize all indexes: {e}")
